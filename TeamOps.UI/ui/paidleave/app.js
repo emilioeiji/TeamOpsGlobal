@@ -136,12 +136,13 @@ function applyFilters() {
     const endDate = document.getElementById("endDate").value;
 
     const filtered = requests.filter(item => {
+        const isConferenciaCompleted = Number(item.hasConferencia) === 1;
         const itemDate = normalizeDate(item.requestDate);
         const matchesDate =
             (!startDate || itemDate >= startDate) &&
             (!endDate || itemDate <= endDate);
 
-        if (!matchesDate) {
+        if (!matchesDate || (!searchTerm && isConferenciaCompleted)) {
             return false;
         }
 
@@ -152,7 +153,6 @@ function applyFilters() {
         const haystack = [
             item.operatorName,
             item.operatorCodigoFJ,
-            item.authorizedBy,
             item.todokeMotivoName,
             item.notes,
             item.requestDate
@@ -169,6 +169,32 @@ function applyFilters() {
 
 function normalizeDate(value) {
     return String(value || "").slice(0, 10);
+}
+
+function isYukyu(item) {
+    return Number(item.todokeMotivoId) === 1;
+}
+
+function canMarkConferencia(item) {
+    return Number(item.hasConferencia) !== 1 &&
+        Number(item.hasTodoke) === 1 &&
+        (!isYukyu(item) || Number(item.hasFolha) === 1);
+}
+
+function getConferenciaStatusMessage(item) {
+    if (Number(item.hasConferencia) === 1) {
+        return "Conferência já registrada.";
+    }
+
+    if (Number(item.hasTodoke) !== 1) {
+        return "Registre o Todoke antes da Conferência.";
+    }
+
+    if (isYukyu(item) && Number(item.hasFolha) !== 1) {
+        return "Para Yukyu, registre a Folha Yukyu antes da Conferência.";
+    }
+
+    return "Registrar Conferência";
 }
 
 function renderTable(items) {
@@ -230,8 +256,8 @@ function renderTable(items) {
                         : "<span class='text-muted'>—</span>"}
                 </td>
                 <td class="text-center">
-                    <span class="cursor-pointer"
-                          onclick="toggleConferencia(${item.id})"
+                    <span class="${canMarkConferencia(item) ? "cursor-pointer" : "status-disabled"}"
+                          ${canMarkConferencia(item) ? `onclick="toggleConferencia(${item.id})"` : `title="${getConferenciaStatusMessage(item)}"`}
                           onmouseenter="requestConferenciaInfo(${item.id})"
                           onmouseleave="hideTooltip()">
                         ${item.hasConferencia
@@ -304,6 +330,14 @@ function toggleFolha(id) {
 }
 
 function toggleConferencia(id) {
+    const item = requests.find(request => Number(request.id) === Number(id));
+    if (!item) return;
+
+    if (!canMarkConferencia(item)) {
+        alert(getConferenciaStatusMessage(item));
+        return;
+    }
+
     if (!confirm("Registrar Conferência para este operador?")) return;
 
     send({

@@ -336,6 +336,11 @@ tbody tr:last-child td {
     color: var(--color-success);
 }
 
+.status-disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+}
+
 .batsu {
     color: var(--color-danger);
 }
