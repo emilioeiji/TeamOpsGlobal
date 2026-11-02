@@ -2,6 +2,7 @@
 // File: Db/DbInitializer.cs
 using Microsoft.Data.Sqlite;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using TeamOps.Config;
 
@@ -22,40 +23,89 @@ namespace TeamOps.Data.Db
             var dbDir = Path.GetDirectoryName(dbPath)!;
             Directory.CreateDirectory(dbDir);
 
-            var isNew = !File.Exists(dbPath);
-            if (isNew)
-            {
-                // Cria o arquivo abrindo uma conexão
-                using (var conn = new SqliteConnection(_settings.ConnectionString))
-                {
-                    conn.Open();
-                    ApplyInitialSchema(conn);
-                    ProductionSchemaMigrator.Ensure(conn);
-                }
+            using var conn = new SqliteConnection(_settings.ConnectionString);
+            conn.Open();
 
-                return;
+            using (var pragma = conn.CreateCommand())
+            {
+                pragma.CommandText = "PRAGMA foreign_keys = OFF; PRAGMA busy_timeout = 30000;";
+                pragma.ExecuteNonQuery();
             }
 
-            using (var conn = new SqliteConnection(_settings.ConnectionString))
+            EnsureMigrationTable(conn);
+
+            foreach (var migration in GetMigrations())
+                ApplyMigration(conn, migration);
+
+            using (var constraints = conn.CreateCommand())
             {
-                conn.Open();
-                ProductionSchemaMigrator.Ensure(conn);
+                constraints.CommandText = "PRAGMA foreign_keys = ON;";
+                constraints.ExecuteNonQuery();
             }
+
+            using (var check = conn.CreateCommand())
+            {
+                check.CommandText = "PRAGMA foreign_key_check;";
+                using var violations = check.ExecuteReader();
+                if (violations.Read())
+                    throw new InvalidOperationException(
+                        $"Schema V2 invalido: violacao de chave estrangeira em {violations.GetString(0)}.");
+            }
+
+            ProductionSchemaMigrator.Ensure(conn);
         }
 
-        private static void ApplyInitialSchema(SqliteConnection conn)
+        private static void EnsureMigrationTable(SqliteConnection conn)
         {
-            // Caminho relativo ao diretório de saída (bin/Debug/netX/)
-            var sqlPath = Path.Combine(AppContext.BaseDirectory, "Migrations", "InitialSchema.sql");
-
-            if (!File.Exists(sqlPath))
-                throw new FileNotFoundException($"Arquivo de schema não encontrado: {sqlPath}");
-
-            var sql = File.ReadAllText(sqlPath);
-
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = sql;
+            cmd.CommandText = @"
+                CREATE TABLE IF NOT EXISTS SchemaMigrations (
+                    Version INTEGER PRIMARY KEY,
+                    Name TEXT NOT NULL UNIQUE,
+                    AppliedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );";
             cmd.ExecuteNonQuery();
         }
+
+        private static IReadOnlyList<MigrationDefinition> GetMigrations() =>
+        [
+            new(1, "Initial operational schema", "TeamOps.Data.Migrations.InitialSchema.sql"),
+            new(2, "Organization hierarchy", "TeamOps.Data.Migrations.V2_0002_Organization.sql")
+        ];
+
+        private static void ApplyMigration(SqliteConnection conn, MigrationDefinition migration)
+        {
+            using var check = conn.CreateCommand();
+            check.CommandText = "SELECT COUNT(*) FROM SchemaMigrations WHERE Version = @version;";
+            check.Parameters.AddWithValue("@version", migration.Version);
+            if ((long)check.ExecuteScalar()! > 0)
+                return;
+
+            var assembly = typeof(DbInitializer).Assembly;
+            using var stream = assembly.GetManifestResourceStream(migration.ResourceName)
+                ?? throw new InvalidOperationException($"Migration incorporada nao encontrada: {migration.ResourceName}");
+            using var reader = new StreamReader(stream);
+            var sql = reader.ReadToEnd();
+
+            using var transaction = conn.BeginTransaction();
+
+            using var cmd = conn.CreateCommand();
+            cmd.Transaction = transaction;
+            cmd.CommandText = sql;
+            cmd.ExecuteNonQuery();
+
+            using var record = conn.CreateCommand();
+            record.Transaction = transaction;
+            record.CommandText = @"
+                INSERT INTO SchemaMigrations (Version, Name)
+                VALUES (@version, @name);";
+            record.Parameters.AddWithValue("@version", migration.Version);
+            record.Parameters.AddWithValue("@name", migration.Name);
+            record.ExecuteNonQuery();
+
+            transaction.Commit();
+        }
+
+        private sealed record MigrationDefinition(int Version, string Name, string ResourceName);
     }
 }

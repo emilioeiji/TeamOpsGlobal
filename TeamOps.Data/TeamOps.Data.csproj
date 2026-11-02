@@ -12,9 +12,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="Migrations\InitialSchema.sql">
+    <EmbeddedResource Include="Migrations\InitialSchema.sql">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Migrations\V2_0002_Organization.sql" />
   </ItemGroup>
 
   <ItemGroup>

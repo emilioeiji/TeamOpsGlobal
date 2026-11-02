@@ -1,6 +1,8 @@
 ﻿// Project: TeamOps.Config
 // File: DbSettings.cs
 using System;
+using System.IO;
+using Microsoft.Data.Sqlite;
 
 namespace TeamOps.Config
 {
@@ -13,16 +15,25 @@ namespace TeamOps.Config
         // Exemplo: permitir Shared Cache e criação caso não exista
         // Microsoft.Data.Sqlite usa "Data Source=...", e aceita opções no connection string.
         public DbSettings(bool portableMode = false)
+            : this(AppPaths.GetDatabasePath(portableMode), portableMode)
         {
-            PortableMode = portableMode;
-            DatabasePath = AppPaths.GetDatabasePath(PortableMode);
+        }
 
-            // Flags úteis:
-            // - Mode=ReadWriteCreate: cria se não existir
-            // - Pooling=True: reaproveita conexões abertas pelo app
-            // - Default Timeout: dá tempo para importações e telas concorrentes liberarem locks curtos
-            // - Foreign Keys: será habilitado por PRAGMA após abrir conexão
-            ConnectionString = $"Data Source={DatabasePath};Mode=ReadWriteCreate;Pooling=True;Default Timeout=30";
+        public DbSettings(string databasePath, bool portableMode = false)
+        {
+            if (string.IsNullOrWhiteSpace(databasePath))
+                throw new ArgumentException("O caminho do banco deve ser informado.", nameof(databasePath));
+
+            PortableMode = portableMode;
+            DatabasePath = Path.GetFullPath(databasePath);
+
+            ConnectionString = new SqliteConnectionStringBuilder
+            {
+                DataSource = DatabasePath,
+                Mode = SqliteOpenMode.ReadWriteCreate,
+                Pooling = true,
+                DefaultTimeout = 30
+            }.ToString();
         }
 
         public override string ToString() => $"DB: {DatabasePath} | Portable: {PortableMode}";

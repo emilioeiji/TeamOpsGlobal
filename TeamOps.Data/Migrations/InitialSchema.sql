@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS Operators (
     Telefone    TEXT,
     Endereco    TEXT,
     Nascimento  DATE,
+    BadgeCode   TEXT,
 
     FOREIGN KEY (ShiftId) REFERENCES Shifts(Id),
     FOREIGN KEY (GroupId) REFERENCES Groups(Id),
@@ -39,8 +40,12 @@ CREATE TABLE IF NOT EXISTS Groups (
 
 CREATE TABLE IF NOT EXISTS Sectors (
     Id INTEGER PRIMARY KEY AUTOINCREMENT,
+    Code TEXT UNIQUE,
     NamePt TEXT NOT NULL,
-    NameJp TEXT NOT NULL
+    NameJp TEXT NOT NULL,
+    OrganizationNodeId INTEGER UNIQUE,
+    IsActive INTEGER NOT NULL DEFAULT 1,
+    FOREIGN KEY (OrganizationNodeId) REFERENCES OrganizationNodes(Id)
 );
 
 CREATE TABLE IF NOT EXISTS GroupLeaders (
@@ -404,7 +409,7 @@ INSERT INTO TodokeMotivo (Id, NomePt, NomeJp)
 SELECT 8, 'Domingo', '法定休日'
 WHERE NOT EXISTS (SELECT 1 FROM TodokeMotivo WHERE Id = 8);
 
-CREATE TABLE AcompYukyu (
+CREATE TABLE IF NOT EXISTS AcompYukyu (
     Id INTEGER PRIMARY KEY AUTOINCREMENT,
 
     OperatorCodigoFJ TEXT NOT NULL,
@@ -413,20 +418,15 @@ CREATE TABLE AcompYukyu (
     AuthorizedByCodigoFJ TEXT,
     Notes TEXT,
 
-    TodokeMotivoId INTEGER,     -- NOVO
+    TodokeMotivoId INTEGER,
+    Conferencia INTEGER NOT NULL DEFAULT 0,
 
     FOREIGN KEY (OperatorCodigoFJ) REFERENCES Operators (CodigoFJ),
     FOREIGN KEY (AuthorizedByCodigoFJ) REFERENCES Operators (CodigoFJ),
     FOREIGN KEY (TodokeMotivoId) REFERENCES TodokeMotivo (Id)
 );
 
-ALTER TABLE AcompYukyu ADD COLUMN TodokeMotivoId INTEGER;
-ALTER TABLE AcompYukyu ADD COLUMN Conferencia INTEGER NOT NULL DEFAULT 0;
-
--- Foreign key para TodokeMotivo
--- (SQLite não permite adicionar FK depois, mas você pode garantir via lógica)
-
-CREATE TABLE YukyuConferencia (
+CREATE TABLE IF NOT EXISTS YukyuConferencia (
     Id INTEGER PRIMARY KEY AUTOINCREMENT,
     AcompYukyuId INTEGER NOT NULL,
     TakenBy TEXT NOT NULL,
@@ -436,21 +436,21 @@ CREATE TABLE YukyuConferencia (
     FOREIGN KEY (TakenBy) REFERENCES Operators(CodigoFJ)
 );
 
-CREATE TABLE YukyuTodoke (
+CREATE TABLE IF NOT EXISTS YukyuTodoke (
     Id INTEGER PRIMARY KEY AUTOINCREMENT,
     AcompYukyuId INTEGER NOT NULL,
     TakenBy INTEGER NOT NULL,
     TakenAt TEXT NOT NULL
 );
 
-CREATE TABLE YukyuFolhaControle (
+CREATE TABLE IF NOT EXISTS YukyuFolhaControle (
     Id INTEGER PRIMARY KEY AUTOINCREMENT,
     AcompYukyuId INTEGER NOT NULL,
     TakenBy INTEGER NOT NULL,
     TakenAt TEXT NOT NULL
 );
 
-CREATE TABLE OperatorPresence (
+CREATE TABLE IF NOT EXISTS OperatorPresence (
     Id INTEGER PRIMARY KEY AUTOINCREMENT,
     CodigoFJ TEXT NOT NULL,
     SectorId INTEGER NOT NULL,   -- reutilizado do Local
@@ -479,31 +479,6 @@ CREATE TABLE IF NOT EXISTS OperatorPositions (
     FOREIGN KEY (LocalId)  REFERENCES Locals(Id)
 );
 
-INSERT INTO Locals (SectorId, Id, X, Y) VALUES (1, 1, 1600, 940);
-INSERT INTO Locals (SectorId, Id, X, Y) VALUES (1, 3, 1600, 690);
-INSERT INTO Locals (SectorId, Id, X, Y) VALUES (1, 4, 1600, 440);
-INSERT INTO Locals (SectorId, Id, X, Y) VALUES (1, 5, 1600, 190);
-
-INSERT INTO Locals (SectorId, Id, X, Y) VALUES (1, 6, 1260, 940);
-INSERT INTO Locals (SectorId, Id, X, Y) VALUES (1, 7, 1260, 690);
-INSERT INTO Locals (SectorId, Id, X, Y) VALUES (1, 8, 1260, 440);
-INSERT INTO Locals (SectorId, Id, X, Y) VALUES (1, 9, 1260, 190);
-
-INSERT INTO Locals (SectorId, Id, X, Y) VALUES (1, 10, 1000, 940);
-INSERT INTO Locals (SectorId, Id, X, Y) VALUES (1, 11, 1000, 690);
-INSERT INTO Locals (SectorId, Id, X, Y) VALUES (1, 12, 1000, 440);
-INSERT INTO Locals (SectorId, Id, X, Y) VALUES (1, 13, 1000, 190);
-
-INSERT INTO Locals (SectorId, Id, X, Y) VALUES (1, 14, 660, 940);
-INSERT INTO Locals (SectorId, Id, X, Y) VALUES (1, 15, 660, 690);
-INSERT INTO Locals (SectorId, Id, X, Y) VALUES (1, 16, 660, 440);
-INSERT INTO Locals (SectorId, Id, X, Y) VALUES (1, 17, 660, 190);
-
-INSERT INTO Locals (SectorId, Id, X, Y) VALUES (1, 18, 320, 940);
-INSERT INTO Locals (SectorId, Id, X, Y) VALUES (1, 19, 320, 690);
-INSERT INTO Locals (SectorId, Id, X, Y) VALUES (1, 20, 320, 440);
-INSERT INTO Locals (SectorId, Id, X, Y) VALUES (1, 21, 320, 190);
-
 CREATE TABLE IF NOT EXISTS OperatorSchedule (
     Id INTEGER PRIMARY KEY AUTOINCREMENT,
 
@@ -520,7 +495,7 @@ CREATE TABLE IF NOT EXISTS OperatorSchedule (
     FOREIGN KEY (LocalId) REFERENCES Locals(Id)
 );
 
-CREATE TABLE SystemLog (
+CREATE TABLE IF NOT EXISTS SystemLog (
     Id INTEGER PRIMARY KEY AUTOINCREMENT,
     Timestamp DATETIME NOT NULL,
     UserFJ TEXT NOT NULL,
@@ -718,4 +693,4 @@ INSERT OR IGNORE INTO ProductionPartCodeStyles
 (PartCode, ColorHex, TextColorHex, Description, IsActive)
 VALUES
 ('RJ2A7', '#D93F3F', '#FFFFFF', 'Destaque EC2 Administrator', 1);
-CREATE INDEX IF NOT EXISTS IX_Assignments_GL_Operator ON Assignments(GLId, OperatorId);
+CREATE INDEX IF NOT EXISTS IX_Assignments_GL_Operator ON Assignments(GLId, OperatorCodigoFJ);
