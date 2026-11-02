@@ -8,6 +8,7 @@ using TeamOps.Config;
 using TeamOps.Data.Db;
 using TeamOps.Data.Repositories;
 using TeamOps.Core.Entities;
+using TeamOps.Data.Security;
 
 namespace TeamOps.UI
 {
@@ -32,7 +33,14 @@ namespace TeamOps.UI
             initializer.EnsureCreated();
 
             ConnectionFactory = new SqliteConnectionFactory(DbSettings);
-            TeamOps.Data.DbSeeder.SeedDefaultAdmin(ConnectionFactory);
+
+            var provisioning = new FirstRunProvisioningService(ConnectionFactory);
+            if (provisioning.IsProvisioningRequired())
+            {
+                using var setupForm = new Forms.FormFirstRunSetup();
+                if (setupForm.ShowDialog() != DialogResult.OK)
+                    return;
+            }
 
             using (var loginForm = new Forms.FormLogin())
             {

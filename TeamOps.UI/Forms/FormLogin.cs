@@ -4,17 +4,18 @@ using System;
 using System.Windows.Forms;
 using TeamOps.Core.Entities;
 using TeamOps.Data.Repositories;
+using TeamOps.Data.Security;
 
 namespace TeamOps.UI.Forms
 {
     public partial class FormLogin : Form
     {
-        private readonly UserRepository _userRepo;
+        private readonly AuthenticationService _authentication;
 
         public FormLogin()
         {
             InitializeComponent();
-            _userRepo = new UserRepository(Program.ConnectionFactory);
+            _authentication = new AuthenticationService(Program.ConnectionFactory);
             pictureBoxLogo.Image = Image.FromFile("Logo.png");
             Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
         }
@@ -31,18 +32,20 @@ namespace TeamOps.UI.Forms
                 return;
             }
 
-            var user = _userRepo.GetByLogin(login);
+            var result = _authentication.Authenticate(login, senha, Environment.MachineName);
 
-            if (user != null && BCrypt.Net.BCrypt.Verify(senha, user.PasswordHash))
+            if (result.Succeeded && result.User != null)
             {
-                Program.CurrentUser = user;
+                Program.CurrentUser = result.User;
                 lblMensagem.Text = string.Empty;
                 DialogResult = DialogResult.OK;
             }
             else
             {
                 lblMensagem.ForeColor = Color.Firebrick;
-                lblMensagem.Text = "Login ou senha invalidos. / ログインまたはパスワードが正しくありません。";
+                lblMensagem.Text = result.ErrorCode == "locked"
+                    ? "Acesso temporariamente bloqueado. Tente novamente mais tarde. / 一時的にロックされています。"
+                    : "Login ou senha invalidos. / ログインまたはパスワードが正しくありません。";
             }
         }
 
