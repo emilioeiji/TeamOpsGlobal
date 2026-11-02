@@ -82,6 +82,32 @@ namespace TeamOps.Data.Security
             return (long)cmd.ExecuteScalar()! == 1;
         }
 
+        public IReadOnlyList<SectorAccessOption> GetAuthorizedSectors(UserAccessContext context)
+        {
+            if (context.AuthorizedSectorIds.Count == 0)
+                return [];
+
+            using var conn = _factory.CreateOpenConnection();
+            using var cmd = conn.CreateCommand();
+            var parameterNames = context.AuthorizedSectorIds
+                .Select((_, index) => $"@sector{index}")
+                .ToArray();
+            cmd.CommandText = $@"
+                SELECT Id, COALESCE(Code, ''), NamePt, NameJp
+                FROM Sectors
+                WHERE IsActive = 1 AND Id IN ({string.Join(",", parameterNames)})
+                ORDER BY NamePt, Id;";
+            var index = 0;
+            foreach (var sectorId in context.AuthorizedSectorIds)
+                cmd.Parameters.AddWithValue(parameterNames[index++], sectorId);
+
+            var result = new List<SectorAccessOption>();
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+                result.Add(new SectorAccessOption(reader.GetInt32(0), reader.GetString(1), reader.GetString(2), reader.GetString(3)));
+            return result;
+        }
+
         public void Demand(int userId, string moduleCode, string actionCode, int? sectorId = null)
         {
             if (!IsAllowed(userId, moduleCode, actionCode, sectorId))

@@ -162,6 +162,24 @@ button {
     backdrop-filter: blur(10px);
 }
 
+.sector-context-pill {
+    min-width: 210px;
+}
+
+.sector-context-pill select {
+    width: 100%;
+    border: 0;
+    outline: 0;
+    color: #fff;
+    background: transparent;
+    font-weight: 700;
+}
+
+.sector-context-pill option {
+    color: var(--color-text);
+    background: #fff;
+}
+
 .meta-label {
     display: block;
     margin-bottom: 4px;

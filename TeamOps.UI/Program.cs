@@ -9,6 +9,7 @@ using TeamOps.Data.Db;
 using TeamOps.Data.Repositories;
 using TeamOps.Core.Entities;
 using TeamOps.Data.Security;
+using TeamOps.Core.Security;
 
 namespace TeamOps.UI
 {
@@ -19,6 +20,7 @@ namespace TeamOps.UI
         public static DbSettings DbSettings { get; private set; } = null!;
         public static SqliteConnectionFactory ConnectionFactory { get; private set; } = null!;
         public static User? CurrentUser { get; set; }
+        public static UserSession? CurrentSession { get; set; }
         public static string CurrentLocale { get; private set; } = DefaultLocale;
 
         [STAThread]
@@ -46,6 +48,9 @@ namespace TeamOps.UI
             {
                 if (loginForm.ShowDialog() == DialogResult.OK && Program.CurrentUser != null)
                 {
+                    var authorization = new AuthorizationService(ConnectionFactory);
+                    var access = authorization.GetContext(Program.CurrentUser.Id);
+                    CurrentSession = new UserSession(access, authorization.GetAuthorizedSectors(access));
                     Application.Run(new Forms.FormDashboardHtml(Program.CurrentUser));
                 }
             }

@@ -41,6 +41,8 @@ const I18N = {
         metaUser: "Usuario",
         metaOperator: "Operador",
         metaShift: "Turno",
+        metaSector: "Setor",
+        allSectors: "Todos os setores autorizados",
         heroTitle: "Atalhos principais do time",
         heroSubtitle: "",
         statDate: "Data e Hora",
@@ -114,6 +116,8 @@ const I18N = {
         metaUser: "\u30e6\u30fc\u30b6\u30fc",
         metaOperator: "\u4f5c\u696d\u8005",
         metaShift: "\u30b7\u30d5\u30c8",
+        metaSector: "\u30bb\u30af\u30bf\u30fc",
+        allSectors: "\u8a31\u53ef\u3055\u308c\u305f\u3059\u3079\u3066\u306e\u30bb\u30af\u30bf\u30fc",
         heroTitle: "\u4e3b\u8981\u30b7\u30e7\u30fc\u30c8\u30ab\u30c3\u30c8",
         heroSubtitle: "",
         statDate: "\u65e5\u6642",
@@ -209,6 +213,13 @@ function bindActions() {
         });
     });
 
+    document.getElementById("sectorContext").addEventListener("change", event => {
+        window.chrome.webview.postMessage({
+            action: "select_sector",
+            sectorId: Number(event.target.value || 0)
+        });
+    });
+
     document.getElementById("btnClosePendingModal").addEventListener("click", closePendingModal);
     document.getElementById("btnAcknowledgePending").addEventListener("click", closePendingModal);
     ["btnOpenTasksFromModal", "btnOpenMasterFromModal"].forEach(id => {
@@ -230,6 +241,12 @@ window.chrome?.webview?.addEventListener("message", event => {
 
     if (payload.type === "locale_changed" && payload.locale) {
         setLocale(payload.locale);
+        return;
+    }
+
+    if (payload.type === "sector_context_changed") {
+        state.payload.selectedSectorId = payload.selectedSectorId;
+        renderSectorContext();
     }
 });
 
@@ -244,6 +261,7 @@ function hydrateDashboard(payload) {
     setText("lblMasterInProgress", payload.masterCardsInProgress ?? 0);
     setText("lblMasterFollow", payload.masterCardsFollow ?? 0);
     renderPendingModal(payload);
+    renderSectorContext();
 
     const level = Number(payload.accessLevel ?? 0);
     const label = ACCESS_LABELS[state.locale]?.[level] || `Nivel ${level}`;
@@ -254,6 +272,34 @@ function hydrateDashboard(payload) {
 
     applyPermissions(level);
     maybeShowPendingModal(payload);
+}
+
+function renderSectorContext() {
+    const select = document.getElementById("sectorContext");
+    if (!select || !state.payload) return;
+
+    const strings = I18N[state.locale];
+    const sectors = state.payload.sectors || [];
+    select.innerHTML = "";
+
+    if (state.payload.canUseAggregateScope) {
+        const aggregate = document.createElement("option");
+        aggregate.value = "0";
+        aggregate.textContent = strings.allSectors;
+        select.appendChild(aggregate);
+    }
+
+    sectors.forEach(sector => {
+        const option = document.createElement("option");
+        option.value = String(sector.id);
+        option.textContent = state.locale === "ja-JP"
+            ? (sector.nameJp || sector.namePt || sector.code)
+            : (sector.namePt || sector.nameJp || sector.code);
+        select.appendChild(option);
+    });
+
+    select.value = String(state.payload.selectedSectorId || 0);
+    select.disabled = select.options.length <= 1;
 }
 
 function refreshNames() {
@@ -306,6 +352,7 @@ function setLocale(locale) {
     setText("txtMetaUser", strings.metaUser);
     setText("txtMetaOperator", strings.metaOperator);
     setText("txtMetaShift", strings.metaShift);
+    setText("txtMetaSector", strings.metaSector);
     setText("txtHeroTitle", strings.heroTitle);
     setText("txtHeroSubtitle", strings.heroSubtitle);
     document.getElementById("txtHeroSubtitle").classList.toggle("hidden", !strings.heroSubtitle);
@@ -367,6 +414,7 @@ function setLocale(locale) {
 
     if (state.payload) {
         refreshNames();
+    renderSectorContext();
         setText("lblDate", formatDashboardDate(state.payload.dateIso, state.locale));
 
         const level = Number(state.payload.accessLevel ?? 0);

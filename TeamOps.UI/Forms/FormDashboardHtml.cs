@@ -14,6 +14,7 @@ using TeamOps.Core.Entities;
 using TeamOps.Data.Db;
 using TeamOps.Data.Repositories;
 using TeamOps.UI.Services;
+using TeamOps.Core.Security;
 
 namespace TeamOps.UI.Forms
 {
@@ -105,6 +106,19 @@ namespace TeamOps.UI.Forms
 
             switch (action)
             {
+                case "select_sector":
+                    try
+                    {
+                        var requestedSectorId = ReadInt(root, "sectorId");
+                        Program.CurrentSession?.SelectSector(requestedSectorId <= 0 ? null : requestedSectorId);
+                        SendSectorContext();
+                    }
+                    catch (UnauthorizedAccessException)
+                    {
+                        ShowAccessDeniedAsync();
+                    }
+                    break;
+
                 case "set_locale":
                     Program.SetCurrentLocale(locale);
                     SendLocale();
@@ -294,7 +308,26 @@ namespace TeamOps.UI.Forms
                 {
                     tasks = GetPendingTaskItems(),
                     masterCards = GetPendingMasterCardItems()
-                }
+                },
+                profileCode = Program.CurrentSession?.Access.ProfileCode ?? _user.AccessLevel.ToString(),
+                selectedSectorId = Program.CurrentSession?.SelectedSectorId,
+                canUseAggregateScope = Program.CurrentSession?.CanUseAggregateScope ?? false,
+                sectors = Program.CurrentSession?.Sectors.Select(sector => new
+                {
+                    id = sector.Id,
+                    code = sector.Code,
+                    namePt = sector.NamePt,
+                    nameJp = sector.NameJp
+                }).ToArray() ?? []
+            });
+        }
+
+        private void SendSectorContext()
+        {
+            PostJson(new
+            {
+                type = "sector_context_changed",
+                selectedSectorId = Program.CurrentSession?.SelectedSectorId
             });
         }
 
@@ -486,6 +519,15 @@ namespace TeamOps.UI.Forms
                    root.TryGetProperty(name, out var prop)
                 ? prop.GetString() ?? ""
                 : "";
+        }
+
+        private static int ReadInt(JsonElement root, string name)
+        {
+            return root.ValueKind == JsonValueKind.Object
+                   && root.TryGetProperty(name, out var prop)
+                   && prop.TryGetInt32(out var value)
+                ? value
+                : 0;
         }
 
         private sealed class DashboardTaskPendingRow
