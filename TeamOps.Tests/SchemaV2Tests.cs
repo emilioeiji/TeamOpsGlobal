@@ -14,8 +14,8 @@ public sealed class SchemaV2Tests
 
         using var conn = context.Factory.CreateOpenConnection();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT group_concat(Version, ',') FROM SchemaMigrations ORDER BY Version;";
-        Assert.Equal("1,2", cmd.ExecuteScalar()?.ToString());
+        cmd.CommandText = "SELECT group_concat(Version, ',') FROM (SELECT Version FROM SchemaMigrations ORDER BY Version);";
+        Assert.Equal("1,2,3", cmd.ExecuteScalar()?.ToString());
 
         cmd.CommandText = "PRAGMA foreign_key_check;";
         using var violations = cmd.ExecuteReader();

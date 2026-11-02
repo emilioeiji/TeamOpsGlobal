@@ -37,19 +37,20 @@ namespace TeamOps.Data.Repositories
         }
 
         // 🔹 Insere novo usuário
-        public void Add(User user)
+        public int Add(User user)
         {
             using var conn = _factory.CreateOpenConnection();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
                 INSERT INTO Users (Login, CodigoFJ, Name, PasswordHash, AccessLevel)
-                VALUES (@login, @codFJ, @name, @pass, @level)";
+                VALUES (@login, @codFJ, @name, @pass, @level);
+                SELECT last_insert_rowid();";
             cmd.Parameters.AddWithValue("@login", user.Login);
             cmd.Parameters.AddWithValue("@codFJ", user.CodigoFJ ?? (object)DBNull.Value);
             cmd.Parameters.AddWithValue("@name", user.Name);
             cmd.Parameters.AddWithValue("@pass", user.PasswordHash);
             cmd.Parameters.AddWithValue("@level", user.AccessLevel);
-            cmd.ExecuteNonQuery();
+            return checked((int)(long)cmd.ExecuteScalar()!);
         }
 
         // 🔹 Retorna todos os usuários
