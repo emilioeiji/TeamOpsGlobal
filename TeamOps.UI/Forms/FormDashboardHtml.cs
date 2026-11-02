@@ -23,6 +23,7 @@ namespace TeamOps.UI.Forms
         private readonly Operator _currentOperator;
         private readonly Shift _currentShift;
         private readonly SqliteConnectionFactory _factory;
+        private readonly bool _hasOperationalIdentity;
 
         public FormDashboardHtml(User user)
         {
@@ -33,12 +34,23 @@ namespace TeamOps.UI.Forms
             _user = user;
 
             var opRepo = new OperatorRepository(Program.ConnectionFactory);
-            _currentOperator = opRepo.GetByCodigoFJ(_user.CodigoFJ!)
-                               ?? throw new InvalidOperationException("Operador nao encontrado.");
+            var operatorRecord = string.IsNullOrWhiteSpace(_user.CodigoFJ)
+                ? null
+                : opRepo.GetByCodigoFJ(_user.CodigoFJ);
+            _hasOperationalIdentity = operatorRecord != null;
+            _currentOperator = operatorRecord ?? new Operator
+            {
+                CodigoFJ = string.Empty,
+                NameRomanji = _user.Name,
+                NameNihongo = _user.Name,
+                Status = true
+            };
 
             var shiftRepo = new ShiftRepository(Program.ConnectionFactory);
-            _currentShift = shiftRepo.GetById(_currentOperator.ShiftId)
-                            ?? throw new InvalidOperationException("Turno nao encontrado.");
+            _currentShift = _hasOperationalIdentity
+                ? shiftRepo.GetById(_currentOperator.ShiftId)
+                    ?? throw new InvalidOperationException("Turno nao encontrado.")
+                : new Shift { Id = 0, NamePt = "Administracao", NameJp = "管理" };
 
             _factory = Program.ConnectionFactory;
 
@@ -76,6 +88,18 @@ namespace TeamOps.UI.Forms
 
             var action = ReadAction(root);
             var locale = ReadString(root, "locale");
+
+            if (!_hasOperationalIdentity
+                && action.StartsWith("open:", StringComparison.OrdinalIgnoreCase)
+                && action is not "open:admin" and not "open:accesscontrol")
+            {
+                MessageBox.Show(
+                    "Cadastre e associe um codigo FJ antes de acessar modulos operacionais.",
+                    "Identidade operacional necessaria",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                return;
+            }
 
             Console.WriteLine($"[Dashboard HTML] Mensagem recebida: {action}");
 
