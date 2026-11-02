@@ -9,6 +9,7 @@ using TeamOps.Core.Common;
 using TeamOps.Core.Entities;
 using TeamOps.Data.Db;
 using TeamOps.Data.Repositories;
+using TeamOps.Data.Security;
 using TeamOps.UI.Forms.Models;
 
 namespace TeamOps.UI.Forms
@@ -18,6 +19,8 @@ namespace TeamOps.UI.Forms
         private readonly SqliteConnectionFactory _factory;
         private readonly User _currentUser;          // ← TEM ACCESS LEVEL
         private readonly Operator _currentLeader;    // ← TEM CODIGOFJ
+        private readonly HikitsuguiAudienceService _audienceService;
+        private int? _authorizedPreviewId;
 
         public HTMLHikitsuguiLeaderRead(
             SqliteConnectionFactory factory,
@@ -29,6 +32,7 @@ namespace TeamOps.UI.Forms
             _factory = factory;
             _currentUser = currentUser;
             _currentLeader = currentLeader;
+            _audienceService = new HikitsuguiAudienceService(factory);
 
             InitializeWebView();
         }
@@ -75,6 +79,8 @@ namespace TeamOps.UI.Forms
 
             Console.WriteLine("ACTION RECEBIDA: " + msg.action);
 
+            try
+            {
             switch (msg.action)
             {
                 case "load":
@@ -90,14 +96,18 @@ namespace TeamOps.UI.Forms
                               ORDER BY Id;"
                         );
 
+                        var authorizedSectorIds = Program.CurrentSession?.Access.AuthorizedSectorIds
+                            ?? throw new InvalidOperationException("Sessao de acesso nao inicializada.");
+
                         var operators = conn.Query(
                             @"SELECT
                                   CodigoFJ,
+                                  SectorId,
                                   COALESCE(NameRomanji, CodigoFJ) AS NamePt,
                                   COALESCE(NULLIF(NameNihongo, ''), NameRomanji, CodigoFJ) AS NameJp
                               FROM Operators
                               ORDER BY NameRomanji;"
-                        );
+                        ).Where(item => authorizedSectorIds.Contains((int)item.SectorId));
 
                         var categories = conn.Query(
                             @"SELECT
@@ -120,11 +130,12 @@ namespace TeamOps.UI.Forms
                         var locals = conn.Query(
                             @"SELECT
                                   Id,
+                                  SectorId,
                                   COALESCE(NamePt, '') AS NamePt,
                                   COALESCE(NULLIF(NameJp, ''), NamePt, '') AS NameJp
                               FROM Locals
                               ORDER BY NamePt;"
-                        );
+                        ).Where(item => authorizedSectorIds.Contains((int)item.SectorId));
 
                         var sectors = conn.Query(
                             @"SELECT
@@ -132,8 +143,9 @@ namespace TeamOps.UI.Forms
                                   COALESCE(NamePt, '') AS NamePt,
                                   COALESCE(NULLIF(NameJp, ''), NamePt, '') AS NameJp
                               FROM Sectors
+                              WHERE IsActive = 1
                               ORDER BY NamePt;"
-                        );
+                        ).Where(item => authorizedSectorIds.Contains((int)item.Id));
 
                         var dtInicial = DateTime.Today.AddDays(-31).ToString("yyyy-MM-dd");
                         var dtFinal = DateTime.Today.AddDays(1).ToString("yyyy-MM-dd");
@@ -187,6 +199,7 @@ namespace TeamOps.UI.Forms
                         using var conn = _factory.CreateOpenConnection();
 
                         var id = Convert.ToInt32(msg.id);
+                        _audienceService.DemandCanView(_currentUser.Id, id);
                         EnsureRead(conn, id, _currentLeader.CodigoFJ);
 
                         SendPreview(id);
@@ -209,6 +222,7 @@ namespace TeamOps.UI.Forms
                         using var conn = _factory.CreateOpenConnection();
 
                         var id = Convert.ToInt32(msg.id);
+                        _audienceService.DemandCanView(_currentUser.Id, id);
                         EnsureRead(conn, id, _currentLeader.CodigoFJ);
 
                         SendLeaderRows(
@@ -228,6 +242,8 @@ namespace TeamOps.UI.Forms
                 case "load_for_edit":
                     {
                         using var conn = _factory.CreateOpenConnection();
+
+                        _audienceService.DemandCanEdit(_currentUser.Id, msg.id);
 
                         var row = conn.QueryFirstOrDefault(
                             "SELECT * FROM Hikitsugui WHERE Id = @id",
@@ -256,6 +272,7 @@ namespace TeamOps.UI.Forms
 
                 case "reply":
                     {
+                        _audienceService.DemandCanEdit(_currentUser.Id, msg.id);
                         if (string.IsNullOrWhiteSpace(msg.text))
                         {
                             webViewHikitsugui.CoreWebView2.PostWebMessageAsJson(
@@ -301,6 +318,22 @@ namespace TeamOps.UI.Forms
 
                         try
                         {
+                            if (!_authorizedPreviewId.HasValue)
+                                throw new UnauthorizedAccessException(L("Abra a visualizacao da mensagem antes do anexo.", "添付ファイルを開く前にメッセージを表示してください。"));
+
+                            _audienceService.DemandCanView(_currentUser.Id, _authorizedPreviewId.Value);
+                            using (var conn = _factory.CreateOpenConnection())
+                            {
+                                var registered = conn.ExecuteScalar<long>(
+                                    @"SELECT EXISTS (
+                                          SELECT 1 FROM HikitsuguiAttachments
+                                          WHERE HikitsuguiId = @id AND FilePath = @path
+                                      );",
+                                    new { id = _authorizedPreviewId.Value, path = msg.path }) == 1;
+                                if (!registered)
+                                    throw new UnauthorizedAccessException(L("Anexo nao pertence a esta mensagem.", "添付ファイルはこのメッセージに属していません。"));
+                            }
+
                             var ext = Path.GetExtension(msg.path).ToLowerInvariant();
                             var blockedExtensions = new[] { ".dll", ".exe", ".bin", ".sys" };
 
@@ -352,6 +385,7 @@ namespace TeamOps.UI.Forms
 
                 case "delete_hikitsugui":
                     {
+                        _audienceService.DemandCanDelete(_currentUser.Id, msg.id);
                         using var conn = _factory.CreateOpenConnection();
                         using var tran = conn.BeginTransaction();
 
@@ -445,6 +479,8 @@ namespace TeamOps.UI.Forms
 
                 case "save_edit":
                     {
+                        _audienceService.DemandCanEdit(_currentUser.Id, msg.id);
+                        _audienceService.DemandCanCreateForSectors(_currentUser.Id, [msg.sectorId]);
                         using var conn = _factory.CreateOpenConnection();
                         using var tran = conn.BeginTransaction();
 
@@ -517,6 +553,7 @@ namespace TeamOps.UI.Forms
                             }
 
                             tran.Commit();
+                            _audienceService.SetSectorAudience(_currentUser.Id, id, [msg.sectorId]);
 
                             try
                             {
@@ -572,6 +609,12 @@ namespace TeamOps.UI.Forms
                             break;
                         }
                     }
+            }
+            }
+            catch (Exception ex)
+            {
+                webViewHikitsugui.CoreWebView2.PostWebMessageAsJson(
+                    JsonSerializer.Serialize(new { type = "error", message = ex.Message }));
             }
         }
 
@@ -639,7 +682,6 @@ namespace TeamOps.UI.Forms
                   AND (@operatorId = 0 OR h.CreatorCodigoFJ = @operatorId)
                   AND (@reasonId = 0 OR h.CategoryId = @reasonId)
                   AND (@equipId = 0 OR h.EquipmentId = @equipId)
-                  AND (@sectorId = 0 OR h.SectorId = @sectorId)
                   AND (
                         @search = ''
                         OR h.Description LIKE '%' || @search || '%'
@@ -657,6 +699,10 @@ namespace TeamOps.UI.Forms
                 ORDER BY h.Date DESC, h.Id DESC;";
 
             using var conn = _factory.CreateOpenConnection();
+            var start = DateTime.TryParse(dtInicial, out var parsedStart) ? parsedStart.Date : DateTime.Today.AddDays(-31);
+            var end = DateTime.TryParse(dtFinal, out var parsedEnd) ? parsedEnd.Date.AddDays(1) : DateTime.Today.AddDays(1);
+            var visibleIds = _audienceService.GetVisibleMessageIds(_currentUser.Id, start, end);
+
             var rows = conn.Query(sql, new
             {
                 dtInicial,
@@ -670,7 +716,9 @@ namespace TeamOps.UI.Forms
                 codigoFJ = _currentLeader.CodigoFJ,
                 search,
                 accessLevel = _currentUser.AccessLevel
-            }).Select(row => new
+            }).Where(row => visibleIds.Contains((int)row.Id))
+              .Where(row => sectorId == 0 || _audienceService.IsTargetedToSector((int)row.Id, sectorId))
+              .Select(row => new
             {
                 row.Id,
                 row.Date,
@@ -702,6 +750,7 @@ namespace TeamOps.UI.Forms
 
         private void SendPreview(int id)
         {
+            _audienceService.DemandCanView(_currentUser.Id, id);
             const string sql = @"
                 SELECT
                     h.Id,
@@ -741,6 +790,8 @@ namespace TeamOps.UI.Forms
                     );
                     return;
                 }
+
+                _authorizedPreviewId = id;
 
                 var description = Convert.ToString(row.Description) ?? string.Empty;
                 Console.WriteLine($"[HikitsuguiLeaderRead][Preview] HikitsuguiId={id} DescriptionLength={description.Length} FieldNameUsed=Description DescriptionFromPayload={description}");
@@ -789,6 +840,7 @@ namespace TeamOps.UI.Forms
 
         private void SendReplies(int id)
         {
+            _audienceService.DemandCanView(_currentUser.Id, id);
             const string sql = @"
                 SELECT
                     r.Id,
@@ -816,6 +868,7 @@ namespace TeamOps.UI.Forms
 
         private void SendAttachments(int id)
         {
+            _audienceService.DemandCanView(_currentUser.Id, id);
             const string sql = @"
                 SELECT
                     Id,

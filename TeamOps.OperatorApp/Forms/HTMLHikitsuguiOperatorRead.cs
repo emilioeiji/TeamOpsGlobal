@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using TeamOps.Data.Repositories;
+using TeamOps.Data.Security;
 
 namespace TeamOps.OperatorApp.Forms
 {
@@ -19,6 +20,8 @@ namespace TeamOps.OperatorApp.Forms
         private readonly HikitsuguiReadRepository _readRepo;
         private readonly OperatorPresenceRepository _presenceRepo;
         private readonly HikitsuguiAttachmentRepository _attachRepo;
+        private readonly HikitsuguiAudienceService _audienceService;
+        private int? _authorizedPreviewId;
 
         public HTMLHikitsuguiOperatorRead()
         {
@@ -31,6 +34,7 @@ namespace TeamOps.OperatorApp.Forms
             _readRepo = new HikitsuguiReadRepository(Program.ConnectionFactory);
             _presenceRepo = new OperatorPresenceRepository(Program.ConnectionFactory);
             _attachRepo = new HikitsuguiAttachmentRepository(Program.ConnectionFactory);
+            _audienceService = new HikitsuguiAudienceService(Program.ConnectionFactory);
 
             InitializeWebView();
         }
@@ -78,7 +82,7 @@ namespace TeamOps.OperatorApp.Forms
             var msg = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(e.WebMessageAsJson);
             if (msg == null) return;
 
-            string action = msg["action"].GetString();
+            string action = msg["action"].GetString() ?? string.Empty;
 
             switch (action)
             {
@@ -87,18 +91,19 @@ namespace TeamOps.OperatorApp.Forms
                 // ============================================
                 case "load_operator":
                     {
-                        string fj = msg["fj"].GetString();
+                        string fj = msg["fj"].GetString() ?? string.Empty;
 
                         Task.Run(() =>
                         {
                             var op = _operatorRepo.GetByCodigoFJ(fj);
-                            if (op == null)
+                            var userId = GetActiveUserId(fj);
+                            if (op == null || !userId.HasValue)
                             {
                                 SendJson("operator_not_found", null);
                                 return;
                             }
 
-                            var locals = GetAllowedLocals(op);
+                            var locals = GetAllowedLocals(userId.Value);
 
                             SendJson("operator_loaded", new
                             {
@@ -119,13 +124,14 @@ namespace TeamOps.OperatorApp.Forms
                     {
                         Task.Run(() =>
                         {
-                            string fj = msg["fj"].GetString();
+                            string fj = msg["fj"].GetString() ?? string.Empty;
                             int localId = msg["localId"].GetInt32();
 
                             var op = _operatorRepo.GetByCodigoFJ(fj);
-                            if (op == null) return;
+                            var userId = GetActiveUserId(fj);
+                            if (op == null || !userId.HasValue) return;
 
-                            var local = ResolveAllowedLocal(op, localId);
+                            var local = ResolveAllowedLocal(userId.Value, localId);
                             if (local == null) return;
 
                             DateTime now = DateTime.Now;
@@ -158,18 +164,19 @@ namespace TeamOps.OperatorApp.Forms
                     {
                         Task.Run(() =>
                         {
-                            string fj = msg["fj"].GetString();
+                            string fj = msg["fj"].GetString() ?? string.Empty;
                             var op = _operatorRepo.GetByCodigoFJ(fj);
-                            if (op == null) return;
+                            var userId = GetActiveUserId(fj);
+                            if (op == null || !userId.HasValue) return;
 
-                            DateTime dtIni = DateTime.Parse(msg["dtInicial"].GetString());
-                            DateTime dtFim = DateTime.Parse(msg["dtFinal"].GetString()).AddDays(1);
+                            DateTime dtIni = DateTime.Parse(msg["dtInicial"].GetString() ?? string.Empty);
+                            DateTime dtFim = DateTime.Parse(msg["dtFinal"].GetString() ?? string.Empty).AddDays(1);
 
                             int localId = msg["localId"].GetInt32();
-                            var local = ResolveAllowedLocal(op, localId);
+                            var local = ResolveAllowedLocal(userId.Value, localId);
                             if (local == null) return;
 
-                            var lista = _hikRepo.GetForOperator(dtIni, dtFim, local.SectorId, localId);
+                            var lista = _hikRepo.GetForOperator(dtIni, dtFim, userId.Value, localId);
                             ApplyReadStatus(lista, fj);
 
                             SendJson("hikitsugui_list", lista);
@@ -185,10 +192,16 @@ namespace TeamOps.OperatorApp.Forms
                         Task.Run(() =>
                         {
                             int id = msg["id"].GetInt32();
-                            string fj = msg.ContainsKey("fj") ? msg["fj"].GetString() : "";
+                            string fj = msg.ContainsKey("fj") ? msg["fj"].GetString() ?? string.Empty : string.Empty;
+                            var userId = GetActiveUserId(fj);
+                            if (!userId.HasValue) return;
+
+                            _audienceService.DemandCanView(userId.Value, id);
 
                             var h = _hikRepo.GetById(id);
                             if (h == null) return;
+
+                            _authorizedPreviewId = id;
 
                             if (!string.IsNullOrEmpty(fj))
                             {
@@ -209,7 +222,10 @@ namespace TeamOps.OperatorApp.Forms
                 // ============================================
                 case "open_attachment":
                     {
-                        string path = msg["path"].GetString();
+                        string path = msg["path"].GetString() ?? string.Empty;
+                        if (!_authorizedPreviewId.HasValue || !IsRegisteredAttachment(_authorizedPreviewId.Value, path))
+                            return;
+
                         if (File.Exists(path))
                         {
                             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
@@ -226,7 +242,10 @@ namespace TeamOps.OperatorApp.Forms
                         Task.Run(() =>
                         {
                             int id = msg["id"].GetInt32();
-                            string fj = msg["fj"].GetString();
+                            string fj = msg["fj"].GetString() ?? string.Empty;
+                            var userId = GetActiveUserId(fj);
+                            if (!userId.HasValue) return;
+                            _audienceService.DemandCanView(userId.Value, id);
 
                             bool lido = _readRepo.HasRead(id, fj);
 
@@ -240,7 +259,10 @@ namespace TeamOps.OperatorApp.Forms
                         Task.Run(() =>
                         {
                             int id = msg["id"].GetInt32();
-                            string fj = msg["fj"].GetString();
+                            string fj = msg["fj"].GetString() ?? string.Empty;
+                            var userId = GetActiveUserId(fj);
+                            if (!userId.HasValue) return;
+                            _audienceService.DemandCanView(userId.Value, id);
 
                             EnsureRead(id, fj);
 
@@ -292,22 +314,56 @@ namespace TeamOps.OperatorApp.Forms
             _readRepo.MarkAsRead(id, fj);
         }
 
-        private List<TeamOps.Core.Entities.Local> GetAllowedLocals(TeamOps.Core.Entities.Operator op)
+        private List<TeamOps.Core.Entities.Local> GetAllowedLocals(int userId)
         {
             var locals = _localRepo.GetAll();
+            var authorizedSectorIds = new AuthorizationService(Program.ConnectionFactory)
+                .GetContext(userId).AuthorizedSectorIds;
 
-            return op.SectorId switch
-            {
-                1 => locals.Where(x => x.SectorId == 1).OrderBy(x => x.NamePt).ToList(),
-                2 => locals.Where(x => x.SectorId == 2).OrderBy(x => x.NamePt).ToList(),
-                3 => locals.Where(x => x.SectorId == 1 || x.SectorId == 2).OrderBy(x => x.NamePt).ToList(),
-                _ => new List<TeamOps.Core.Entities.Local>()
-            };
+            return locals
+                .Where(x => authorizedSectorIds.Contains(x.SectorId))
+                .OrderBy(x => x.NamePt)
+                .ToList();
         }
 
-        private TeamOps.Core.Entities.Local? ResolveAllowedLocal(TeamOps.Core.Entities.Operator op, int localId)
+        private TeamOps.Core.Entities.Local? ResolveAllowedLocal(int userId, int localId)
         {
-            return GetAllowedLocals(op).FirstOrDefault(x => x.Id == localId);
+            return GetAllowedLocals(userId).FirstOrDefault(x => x.Id == localId);
+        }
+
+        private static int? GetActiveUserId(string? codigoFJ)
+        {
+            if (string.IsNullOrWhiteSpace(codigoFJ))
+                return null;
+
+            using var conn = Program.ConnectionFactory.CreateOpenConnection();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT Id FROM Users
+                WHERE CodigoFJ = @codigoFJ COLLATE NOCASE
+                  AND IsActive = 1;";
+            cmd.Parameters.AddWithValue("@codigoFJ", codigoFJ.Trim());
+            var value = cmd.ExecuteScalar();
+            return value is null or DBNull
+                ? null
+                : Convert.ToInt32(value, System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        private static bool IsRegisteredAttachment(int hikitsuguiId, string? path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                return false;
+
+            using var conn = Program.ConnectionFactory.CreateOpenConnection();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT EXISTS (
+                    SELECT 1 FROM HikitsuguiAttachments
+                    WHERE HikitsuguiId = @id AND FilePath = @path
+                );";
+            cmd.Parameters.AddWithValue("@id", hikitsuguiId);
+            cmd.Parameters.AddWithValue("@path", path);
+            return (long)cmd.ExecuteScalar()! == 1;
         }
 
         private void SendJson(string type, object? data)

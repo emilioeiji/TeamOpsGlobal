@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using TeamOps.Core.Common;
 using TeamOps.Core.Entities;
 using TeamOps.Data.Db;
+using TeamOps.Data.Security;
 using static Dapper.SqlMapper;
 
 namespace TeamOps.Data.Repositories
@@ -266,25 +267,22 @@ namespace TeamOps.Data.Repositories
         }
 
         public List<HikitsuguiListItem> GetForOperator(
-    DateTime start,
-    DateTime end,
-    int operatorSectorId,
-    int selectedLocalId)
+            DateTime start,
+            DateTime end,
+            int userId,
+            int selectedLocalId)
         {
             var list = new List<HikitsuguiListItem>();
+            var visibleIds = new HikitsuguiAudienceService(_factory)
+                .GetVisibleMessageIds(userId, start, end);
+
+            if (visibleIds.Count == 0)
+                return list;
 
             using var conn = _factory.CreateOpenConnection();
             using var cmd = conn.CreateCommand();
 
-            string gerais = operatorSectorId switch
-            {
-                1 => "98, 99",
-                2 => "97, 99",
-                3 => "97, 98, 99",
-                _ => ""
-            };
-
-            cmd.CommandText = $@"
+            cmd.CommandText = @"
         SELECT 
             h.Id,
             h.Date,
@@ -296,10 +294,7 @@ namespace TeamOps.Data.Repositories
         LEFT JOIN Operators o ON o.CodigoFJ = h.CreatorCodigoFJ
         WHERE h.Date >= @Start AND h.Date < @End
           AND h.ForOperators = 1
-          AND (
-                h.LocalId = @LocalId
-                OR h.LocalId IN ({gerais})
-              )
+          AND (h.LocalId = @LocalId OR h.LocalId IS NULL)
         ORDER BY h.Date DESC";
 
             cmd.Parameters.AddWithValue("@LocalId", selectedLocalId);
@@ -309,9 +304,13 @@ namespace TeamOps.Data.Repositories
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
             {
+                var id = reader.GetInt32(0);
+                if (!visibleIds.Contains(id))
+                    continue;
+
                 list.Add(new HikitsuguiListItem
                 {
-                    Id = reader.GetInt32(0),
+                    Id = id,
                     Date = reader.GetDateTime(1),
                     CategoryName = reader.GetString(2),
                     CreatorCodigoFJ = reader.GetString(3),

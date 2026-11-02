@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Windows.Forms;
 using TeamOps.Core.Entities;
 using TeamOps.Data.Db;
+using TeamOps.Data.Security;
 using TeamOps.UI.Forms.Models;
 
 namespace TeamOps.UI.Forms
@@ -16,6 +17,7 @@ namespace TeamOps.UI.Forms
         private readonly SqliteConnectionFactory _factory;
         private readonly User _currentUser;
         private readonly Operator _currentOperator;
+        private readonly HikitsuguiAudienceService _audienceService;
 
         public HTMLHikitsuguiCreate(
             SqliteConnectionFactory factory,
@@ -27,6 +29,7 @@ namespace TeamOps.UI.Forms
             _factory = factory;
             _currentUser = currentUser;
             _currentOperator = currentOperator;
+            _audienceService = new HikitsuguiAudienceService(factory);
 
             InitializeWebView();
         }
@@ -106,14 +109,18 @@ namespace TeamOps.UI.Forms
                   ORDER BY NamePt;"
             );
 
+            var authorizedSectorIds = Program.CurrentSession?.Access.AuthorizedSectorIds
+                ?? throw new InvalidOperationException("Sessao de acesso nao inicializada.");
+
             var locals = conn.Query(
                 @"SELECT
                       Id,
+                      SectorId,
                       COALESCE(NamePt, '') AS NamePt,
                       COALESCE(NULLIF(NameJp, ''), NamePt, '') AS NameJp
                   FROM Locals
                   ORDER BY NamePt;"
-            );
+            ).Where(item => authorizedSectorIds.Contains((int)item.SectorId));
 
             var sectors = conn.Query(
                 @"SELECT
@@ -121,8 +128,9 @@ namespace TeamOps.UI.Forms
                       COALESCE(NamePt, '') AS NamePt,
                       COALESCE(NULLIF(NameJp, ''), NamePt, '') AS NameJp
                   FROM Sectors
+                  WHERE IsActive = 1
                   ORDER BY NamePt;"
-            );
+            ).Where(item => authorizedSectorIds.Contains((int)item.Id));
 
             var json = JsonSerializer.Serialize(new
             {
@@ -149,6 +157,9 @@ namespace TeamOps.UI.Forms
         {
             using var conn = _factory.CreateOpenConnection();
 
+            if (msg.sectorId <= 0)
+                throw new InvalidOperationException("Selecione um setor.");
+
             // 1) INSERT PRINCIPAL
             var sqlInsert = File.ReadAllText(
                 Path.Combine(Application.StartupPath, "Sql", "Hikitsugui", "insert_hikitsugui.sql")
@@ -168,6 +179,16 @@ namespace TeamOps.UI.Forms
                 forMaSv = msg.publico == "masv" ? 1 : 0,
                 description = msg.text
             });
+
+            try
+            {
+                _audienceService.SetSectorAudience(_currentUser.Id, newId, [msg.sectorId]);
+            }
+            catch
+            {
+                conn.Execute("DELETE FROM Hikitsugui WHERE Id = @id;", new { id = newId });
+                throw;
+            }
 
             // 2) SALVAR ANEXOS
             if (msg.attachments != null)

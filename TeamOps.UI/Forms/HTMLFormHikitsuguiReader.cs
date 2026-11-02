@@ -10,6 +10,7 @@ using System.Windows.Forms;
 using TeamOps.Core.Common;
 using TeamOps.Core.Entities;
 using TeamOps.Data.Db;
+using TeamOps.Data.Security;
 using TeamOps.UI.Forms.Models;
 
 namespace TeamOps.UI.Forms
@@ -17,10 +18,14 @@ namespace TeamOps.UI.Forms
     public partial class HTMLFormHikitsuguiReader : Form
     {
         private readonly SqliteConnectionFactory _factory;
+        private readonly User _currentUser;
         private readonly Operator _currentOperator;
+        private readonly HikitsuguiAudienceService _audienceService;
+        private int? _authorizedPreviewId;
 
         public HTMLFormHikitsuguiReader(
             SqliteConnectionFactory factory,
+            User currentUser,
             Operator currentOperator)
         {
             InitializeComponent();
@@ -28,7 +33,9 @@ namespace TeamOps.UI.Forms
             Text = L("Leitura de Hikitsugui", "\u5f15\u7d99\u304e\u8aad\u307f\u53d6\u308a");
 
             _factory = factory;
+            _currentUser = currentUser;
             _currentOperator = currentOperator;
+            _audienceService = new HikitsuguiAudienceService(factory);
 
             InitializeWebView();
         }
@@ -82,7 +89,7 @@ namespace TeamOps.UI.Forms
                     break;
 
                 case "open_attachment":
-                    OpenAttachment(msg.path);
+                    OpenAttachment(msg.id, msg.path);
                     break;
             }
         }
@@ -100,14 +107,18 @@ namespace TeamOps.UI.Forms
                   ORDER BY Id;"
             ).ToList();
 
+            var authorizedSectorIds = Program.CurrentSession?.Access.AuthorizedSectorIds
+                ?? throw new InvalidOperationException("Sessao de acesso nao inicializada.");
+
             var sectors = conn.Query(
                 @"SELECT
                       Id,
                       COALESCE(NamePt, '') AS NamePt,
                       COALESCE(NULLIF(NameJp, ''), NamePt, '') AS NameJp
                   FROM Sectors
+                  WHERE IsActive = 1
                   ORDER BY Id;"
-            ).ToList();
+            ).Where(item => authorizedSectorIds.Contains((int)item.Id)).ToList();
 
             var start = DateTime.Today.AddMonths(-1);
             var end = DateTime.Today;
@@ -192,6 +203,9 @@ namespace TeamOps.UI.Forms
                 ORDER BY NameRomanji;";
 
             var rows = conn.Query<MemberRow>(sql).ToList();
+            var authorizedSectorIds = Program.CurrentSession?.Access.AuthorizedSectorIds
+                ?? throw new InvalidOperationException("Sessao de acesso nao inicializada.");
+            rows = rows.Where(row => row.SectorId.HasValue && authorizedSectorIds.Contains(row.SectorId.Value)).ToList();
 
             rows = audience switch
             {
@@ -207,7 +221,7 @@ namespace TeamOps.UI.Forms
 
             if (sectorId > 0)
             {
-                rows = rows.Where(row => MatchesSector(row.SectorId, sectorId)).ToList();
+                rows = rows.Where(row => row.SectorId == sectorId).ToList();
             }
 
             rows = rows
@@ -256,9 +270,15 @@ namespace TeamOps.UI.Forms
                 end = end.Date.AddDays(1)
             }).ToList();
 
+            var visibleIds = _audienceService.GetVisibleMessageIds(
+                _currentUser.Id,
+                start.Date,
+                end.Date.AddDays(1));
+
             rows = rows
+                .Where(row => visibleIds.Contains(row.Id))
                 .Where(row => MatchesAudience(row, audience))
-                .Where(row => sectorId == 0 || MatchesSector(row.SectorId, sectorId))
+                .Where(row => sectorId == 0 || _audienceService.IsTargetedToSector(row.Id, sectorId))
                 .ToList();
 
             return rows;
@@ -283,6 +303,7 @@ namespace TeamOps.UI.Forms
 
         private void SendPreview(int id)
         {
+            _audienceService.DemandCanView(_currentUser.Id, id);
             using var conn = _factory.CreateOpenConnection();
 
             const string sql = @"
@@ -305,6 +326,8 @@ namespace TeamOps.UI.Forms
             var row = conn.QueryFirstOrDefault(sql, new { id });
             if (row == null)
                 return;
+
+            _authorizedPreviewId = id;
 
             var attachments = conn.Query(
                 @"SELECT
@@ -335,7 +358,7 @@ namespace TeamOps.UI.Forms
             });
         }
 
-        private void OpenAttachment(string? path)
+        private void OpenAttachment(int hikitsuguiId, string? path)
         {
             if (string.IsNullOrWhiteSpace(path))
             {
@@ -345,6 +368,21 @@ namespace TeamOps.UI.Forms
 
             try
             {
+                if (_authorizedPreviewId != hikitsuguiId)
+                    throw new UnauthorizedAccessException(L("Abra a visualizacao da mensagem antes do anexo.", "添付ファイルを開く前にメッセージを表示してください。"));
+
+                _audienceService.DemandCanView(_currentUser.Id, hikitsuguiId);
+
+                using var conn = _factory.CreateOpenConnection();
+                var isRegistered = conn.ExecuteScalar<long>(
+                    @"SELECT EXISTS (
+                          SELECT 1 FROM HikitsuguiAttachments
+                          WHERE HikitsuguiId = @hikitsuguiId AND FilePath = @path
+                      );",
+                    new { hikitsuguiId, path }) == 1;
+                if (!isRegistered)
+                    throw new UnauthorizedAccessException(L("Anexo nao pertence a esta mensagem.", "添付ファイルはこのメッセージに属していません。"));
+
                 var ext = Path.GetExtension(path).ToLowerInvariant();
                 var blockedExtensions = new[] { ".dll", ".exe", ".bin", ".sys" };
 
@@ -415,19 +453,6 @@ namespace TeamOps.UI.Forms
                 "leaders" => "leaders",
                 "masv" => "masv",
                 _ => "operators"
-            };
-        }
-
-        private static bool MatchesSector(int? value, int selected)
-        {
-            var sector = value ?? 0;
-
-            return selected switch
-            {
-                1 => sector == 1 || sector == 3,
-                2 => sector == 2 || sector == 3,
-                3 => sector == 3,
-                _ => true
             };
         }
 

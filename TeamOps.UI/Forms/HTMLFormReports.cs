@@ -110,7 +110,10 @@ namespace TeamOps.UI.Forms
             switch (action)
             {
                 case "open:hikitsugui":
-                    OpenDialog(() => new HTMLFormHikitsuguiReader(_factory, _currentOperator));
+                    OpenDialog(() => new HTMLFormHikitsuguiReader(
+                        _factory,
+                        Program.CurrentUser ?? throw new InvalidOperationException("Usuario nao autenticado."),
+                        _currentOperator));
                     break;
 
                 case "open:follow_report":

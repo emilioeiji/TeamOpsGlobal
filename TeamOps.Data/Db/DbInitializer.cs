@@ -71,7 +71,8 @@ namespace TeamOps.Data.Db
         [
             new(1, "Initial operational schema", "TeamOps.Data.Migrations.InitialSchema.sql"),
             new(2, "Organization hierarchy", "TeamOps.Data.Migrations.V2_0002_Organization.sql"),
-            new(3, "Identity and authorization", "TeamOps.Data.Migrations.V2_0003_IdentityAuthorization.sql")
+            new(3, "Identity and authorization", "TeamOps.Data.Migrations.V2_0003_IdentityAuthorization.sql"),
+            new(4, "Hikitsugui audiences", "TeamOps.Data.Migrations.V2_0004_HikitsuguiAudiences.sql")
         ];
 
         private static void ApplyMigration(SqliteConnection conn, MigrationDefinition migration)

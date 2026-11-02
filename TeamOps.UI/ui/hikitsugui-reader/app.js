@@ -273,6 +273,7 @@ function previewRow(id) {
 }
 
 function openPreview(data) {
+    state.previewId = Number(data.id || 0);
     setText("previewDate", data.date || "-");
     setText("previewCategory", localizedValue(data.categoryPt, data.categoryJp));
     setText("previewSector", localizedValue(data.sectorPt, data.sectorJp));
@@ -302,10 +303,11 @@ function renderAttachments(items) {
 }
 
 function openAttachment(path) {
-    send("open_attachment", { path });
+    send("open_attachment", { id: Number(state.previewId || 0), path });
 }
 
 function closePreview() {
+    state.previewId = 0;
     document.getElementById("previewModal").classList.add("hidden");
 }
 
