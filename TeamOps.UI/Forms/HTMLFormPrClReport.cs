@@ -9,6 +9,9 @@ using System.Text.Json;
 using System.Windows.Forms;
 using TeamOps.Data.Db;
 using TeamOps.Data.Repositories;
+using TeamOps.Core.Entities;
+using TeamOps.Core.Security;
+using TeamOps.Data.Security;
 
 namespace TeamOps.UI.Forms
 {
@@ -21,12 +24,16 @@ namespace TeamOps.UI.Forms
 
         private readonly SqliteConnectionFactory _factory;
         private readonly bool _isPr;
+        private readonly User _currentUser;
+        private readonly AuthorizationService _authorization;
         private readonly Microsoft.Web.WebView2.WinForms.WebView2 _webView;
 
-        public HTMLFormPrClReport(SqliteConnectionFactory factory, bool isPr)
+        public HTMLFormPrClReport(SqliteConnectionFactory factory, User currentUser, bool isPr)
         {
             _factory = factory;
+            _currentUser = currentUser;
             _isPr = isPr;
+            _authorization = new AuthorizationService(factory);
 
             Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
             Text = _isPr ? L("Relatorio PR", "PR Report") : L("Relatorio CL", "CL Report");
@@ -89,6 +96,8 @@ namespace TeamOps.UI.Forms
 
         private void SendInit()
         {
+            _authorization.Demand(_currentUser.Id, ModuleCodes.Reports, PermissionActions.View);
+            var authorizedSectorIds = _authorization.GetContext(_currentUser.Id).AuthorizedSectorIds;
             var today = DateTime.Today;
             PostJson(new
             {
@@ -102,7 +111,9 @@ namespace TeamOps.UI.Forms
                         start = today.AddMonths(-1).ToString("yyyy-MM-dd"),
                         end = today.ToString("yyyy-MM-dd")
                     },
-                    sectors = new SectorRepository(_factory).GetAll().Select(item => new { id = item.Id, namePt = item.NamePt, nameJp = item.NameJp }),
+                    sectors = new SectorRepository(_factory).GetAll()
+                        .Where(item => authorizedSectorIds.Contains(item.Id))
+                        .Select(item => new { id = item.Id, namePt = item.NamePt, nameJp = item.NameJp }),
                     categories = GetCategories().Select(item => new { id = item.Id, namePt = item.NamePt, nameJp = item.NameJp }),
                     priorities = GetPriorities().Select(item => new { id = item.Id, namePt = item.NamePt, nameJp = item.NameJp })
                 }
@@ -111,6 +122,12 @@ namespace TeamOps.UI.Forms
 
         private void SendRows(ReportFilter filter)
         {
+            _authorization.DemandSectorOrAggregate(
+                _currentUser.Id,
+                ModuleCodes.PrCl,
+                PermissionActions.View,
+                filter.SectorId);
+            var authorizedSectorIds = _authorization.GetContext(_currentUser.Id).AuthorizedSectorIds.ToArray();
             using var conn = _factory.CreateOpenConnection();
             var table = _isPr ? "PR" : "CL";
             var categoryTable = _isPr ? "PRCategorias" : "CLCategorias";
@@ -137,6 +154,7 @@ namespace TeamOps.UI.Forms
                     LEFT JOIN {priorityTable} p ON p.Id = d.PrioridadeId
                     LEFT JOIN Operators op ON op.CodigoFJ = d.AutorCodigoFJ
                     WHERE date(d.DataEmissao) BETWEEN date(@Start) AND date(@End)
+                      AND d.SetorId IN @AuthorizedSectorIds
                       AND (@SectorId <= 0 OR d.SetorId = @SectorId)
                       AND (@CategoryId <= 0 OR d.CategoriaId = @CategoryId)
                       AND (@PriorityId <= 0 OR d.PrioridadeId = @PriorityId)
@@ -148,7 +166,16 @@ namespace TeamOps.UI.Forms
                          OR COALESCE(op.NameNihongo, '') LIKE '%' || @Search || '%'
                       )
                     ORDER BY date(d.DataEmissao) DESC, d.Id DESC;",
-                filter)
+                new
+                {
+                    filter.Start,
+                    filter.End,
+                    filter.SectorId,
+                    filter.CategoryId,
+                    filter.PriorityId,
+                    filter.Search,
+                    AuthorizedSectorIds = authorizedSectorIds
+                })
                 .ToList();
 
             PostJson(new
@@ -169,6 +196,24 @@ namespace TeamOps.UI.Forms
 
         private void OpenFile(string fileName)
         {
+            if (string.IsNullOrWhiteSpace(fileName) || Path.GetFileName(fileName) != fileName)
+                throw new UnauthorizedAccessException(L("Nome de arquivo invalido.", "Invalid file name."));
+
+            var authorizedSectorIds = _authorization.GetContext(_currentUser.Id).AuthorizedSectorIds.ToArray();
+            using (var conn = _factory.CreateOpenConnection())
+            {
+                var table = _isPr ? "PR" : "CL";
+                var allowed = conn.ExecuteScalar<long>(
+                    $@"SELECT EXISTS (
+                           SELECT 1 FROM {table}
+                           WHERE NomeArquivo = @fileName
+                             AND SetorId IN @authorizedSectorIds
+                       );",
+                    new { fileName, authorizedSectorIds }) == 1;
+                if (!allowed)
+                    throw new UnauthorizedAccessException(L("Arquivo fora do escopo autorizado.", "File outside the authorized scope."));
+            }
+
             var directory = ConfigurationManager.AppSettings[_isPr ? "PRDirectory" : "CLDirectory"] ?? string.Empty;
             var path = Path.Combine(directory, fileName);
             if (!File.Exists(path))

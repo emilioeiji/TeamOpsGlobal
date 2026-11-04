@@ -6,21 +6,28 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Windows.Forms;
+using TeamOps.Core.Entities;
+using TeamOps.Core.Security;
 using TeamOps.Data.Db;
+using TeamOps.Data.Security;
 
 namespace TeamOps.UI.Forms
 {
     public partial class HTMLFormSobraDePecaReport : Form
     {
         private readonly SqliteConnectionFactory _factory;
+        private readonly User _currentUser;
+        private readonly AuthorizationService _authorization;
 
-        public HTMLFormSobraDePecaReport(SqliteConnectionFactory factory)
+        public HTMLFormSobraDePecaReport(SqliteConnectionFactory factory, User currentUser)
         {
             InitializeComponent();
             Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
             Text = L("Relatorio de Sobra de Peca", "Scrap Parts Report");
 
             _factory = factory;
+            _currentUser = currentUser;
+            _authorization = new AuthorizationService(factory);
 
             InitializeWebView();
         }
@@ -77,6 +84,8 @@ namespace TeamOps.UI.Forms
         private void LoadInitial()
         {
             using var conn = _factory.CreateOpenConnection();
+            var sectorId = ResolveGBareruSectorId(conn);
+            DemandView(sectorId);
             var filter = CreateDefaultFilter();
 
             PostJson(new
@@ -90,7 +99,8 @@ namespace TeamOps.UI.Forms
                         shifts = conn.Query(
                             @"SELECT Id AS id, COALESCE(NamePt, '') AS namePt, COALESCE(NULLIF(NameJp, ''), NamePt, '') AS nameJp FROM Shifts ORDER BY Id;").ToList(),
                         machines = conn.Query(
-                            @"SELECT Id AS id, COALESCE(NamePt, '') AS namePt, COALESCE(NULLIF(NameJp, ''), NamePt, '') AS nameJp FROM Machines WHERE SectorId = 1 AND COALESCE(IsActive, 1) = 1 ORDER BY NamePt;").ToList()
+                            @"SELECT Id AS id, COALESCE(NamePt, '') AS namePt, COALESCE(NULLIF(NameJp, ''), NamePt, '') AS nameJp FROM Machines WHERE SectorId = @sectorId AND COALESCE(IsActive, 1) = 1 ORDER BY NamePt;",
+                            new { sectorId }).ToList()
                     },
                     defaults = new
                     {
@@ -110,6 +120,8 @@ namespace TeamOps.UI.Forms
         private void SendRows(SobraReportFilter filter)
         {
             using var conn = _factory.CreateOpenConnection();
+            var sectorId = ResolveGBareruSectorId(conn);
+            DemandView(sectorId);
             var rows = conn.Query<SobraReportRow>(
                 @"
                     SELECT
@@ -144,7 +156,7 @@ namespace TeamOps.UI.Forms
                       AND date(s.Data) <= date(@end)
                       AND (@shiftId <= 0 OR s.TurnoId = @shiftId)
                       AND (@machineId <= 0 OR s.MachineId = @machineId)
-                      AND COALESCE(m.SectorId, 0) = 1
+                      AND COALESCE(m.SectorId, 0) = @sectorId
                       AND (@item = '' OR upper(trim(COALESCE(s.Item, ''))) = @item)
                       AND (
                             @search = ''
@@ -166,7 +178,8 @@ namespace TeamOps.UI.Forms
                     machineId = filter.MachineId,
                     item = filter.Item.ToUpperInvariant(),
                     search = filter.Search.ToUpperInvariant(),
-                    searchLike = $"%{filter.Search.ToUpperInvariant()}%"
+                    searchLike = $"%{filter.Search.ToUpperInvariant()}%",
+                    sectorId
                 }).ToList();
 
             PostJson(new
@@ -194,6 +207,23 @@ namespace TeamOps.UI.Forms
                 Start = end.AddDays(-29),
                 End = end
             };
+        }
+
+        private void DemandView(int sectorId)
+        {
+            _authorization.Demand(_currentUser.Id, ModuleCodes.Reports, PermissionActions.View);
+            _authorization.Demand(
+                _currentUser.Id,
+                ModuleCodes.SobraDePeca,
+                PermissionActions.View,
+                sectorId);
+        }
+
+        private static int ResolveGBareruSectorId(System.Data.IDbConnection conn)
+        {
+            return conn.ExecuteScalar<int?>(
+                "SELECT Id FROM Sectors WHERE Code = 'G-BARERU' COLLATE NOCASE AND IsActive = 1;")
+                ?? throw new InvalidOperationException("Setor G-Bareru nao configurado.");
         }
 
         private static SobraReportFilter ReadFilter(JsonElement root)

@@ -6,7 +6,9 @@ using System.Linq;
 using System.Text.Json;
 using System.Windows.Forms;
 using TeamOps.Core.Entities;
+using TeamOps.Core.Security;
 using TeamOps.Data.Db;
+using TeamOps.Data.Security;
 using TeamOps.UI.Forms.Models;
 
 namespace TeamOps.UI.Forms
@@ -15,16 +17,21 @@ namespace TeamOps.UI.Forms
     {
         private readonly SqliteConnectionFactory _factory;
         private readonly Operator _currentOperator;
+        private readonly User _currentUser;
+        private readonly AuthorizationService _authorization;
 
         public HTMLFormSobraDePeca(
             SqliteConnectionFactory factory,
+            User currentUser,
             Operator currentOperator)
         {
             InitializeComponent();
             Text = L("Sobra de peca", "\u90e8\u54c1\u4f59\u308a\u767b\u9332");
 
             _factory = factory;
+            _currentUser = currentUser;
             _currentOperator = currentOperator;
+            _authorization = new AuthorizationService(factory);
 
             InitializeWebView();
         }
@@ -71,6 +78,12 @@ namespace TeamOps.UI.Forms
         private void LoadInitialData()
         {
             using var conn = _factory.CreateOpenConnection();
+            var sectorId = ResolveGBareruSectorId(conn);
+            _authorization.Demand(
+                _currentUser.Id,
+                ModuleCodes.SobraDePeca,
+                PermissionActions.View,
+                sectorId);
 
             var shiftName = conn.QueryFirstOrDefault<string>(
                 string.Equals(Program.CurrentLocale, "ja-JP", StringComparison.OrdinalIgnoreCase)
@@ -85,9 +98,9 @@ namespace TeamOps.UI.Forms
                       COALESCE(NameRomanji, CodigoFJ) AS NamePt,
                       COALESCE(NULLIF(NameNihongo, ''), NameRomanji, CodigoFJ) AS NameJp
                   FROM Operators
-                  WHERE Status = 1 AND ShiftId = @shiftId
+                  WHERE Status = 1 AND ShiftId = @shiftId AND SectorId = @sectorId
                   ORDER BY NameRomanji",
-                new { shiftId = _currentOperator.ShiftId }
+                new { shiftId = _currentOperator.ShiftId, sectorId }
             ).ToList();
 
             var machines = conn.Query(
@@ -96,9 +109,10 @@ namespace TeamOps.UI.Forms
                       COALESCE(NamePt, '') AS NamePt,
                       COALESCE(NULLIF(NameJp, ''), NamePt, '') AS NameJp
                   FROM Machines
-                  WHERE SectorId = 1
+                  WHERE SectorId = @sectorId
                     AND COALESCE(IsActive, 1) = 1
-                  ORDER BY NamePt"
+                  ORDER BY NamePt",
+                new { sectorId }
             ).ToList();
 
             var shains = conn.Query(
@@ -110,7 +124,7 @@ namespace TeamOps.UI.Forms
                   ORDER BY NameRomanji"
             ).ToList();
 
-            var rows = QueryRecentRows(conn).ToList();
+            var rows = QueryRecentRows(conn, sectorId).ToList();
 
             PostJson(new
             {
@@ -141,6 +155,20 @@ namespace TeamOps.UI.Forms
                 ValidatePayloadLocalized(msg);
 
                 using var conn = _factory.CreateOpenConnection();
+                var sectorId = ResolveGBareruSectorId(conn);
+                _authorization.Demand(
+                    _currentUser.Id,
+                    ModuleCodes.SobraDePeca,
+                    PermissionActions.Create,
+                    sectorId);
+                var machineIsAllowed = conn.ExecuteScalar<long>(
+                    @"SELECT EXISTS (
+                          SELECT 1 FROM Machines
+                          WHERE Id = @machineId AND SectorId = @sectorId AND COALESCE(IsActive, 1) = 1
+                      );",
+                    new { msg.machineId, sectorId }) == 1;
+                if (!machineIsAllowed)
+                    throw new UnauthorizedAccessException(L("Maquina fora do setor autorizado.", "許可されたセクター外の設備です。"));
 
                 const string sql = @"
                     INSERT INTO SobraDePeca
@@ -176,7 +204,7 @@ namespace TeamOps.UI.Forms
                     message = "Sobra de peça registrada com sucesso."
                 });
 
-                SendRows(conn);
+                SendRows(conn, sectorId);
             }
             catch (Exception ex)
             {
@@ -221,16 +249,16 @@ namespace TeamOps.UI.Forms
                 throw new InvalidOperationException("Informe o item.");
         }
 
-        private void SendRows(System.Data.IDbConnection conn)
+        private void SendRows(System.Data.IDbConnection conn, int sectorId)
         {
             PostJson(new
             {
                 type = "rows",
-                data = QueryRecentRows(conn).ToList()
+                data = QueryRecentRows(conn, sectorId).ToList()
             });
         }
 
-        private static System.Collections.Generic.IEnumerable<dynamic> QueryRecentRows(System.Data.IDbConnection conn)
+        private static System.Collections.Generic.IEnumerable<dynamic> QueryRecentRows(System.Data.IDbConnection conn, int sectorId)
         {
             const string sql = @"
                 SELECT
@@ -257,10 +285,18 @@ namespace TeamOps.UI.Forms
                 LEFT JOIN Operators o ON o.CodigoFJ = s.OperadorId
                 LEFT JOIN Machines m ON m.Id = s.MachineId
                 LEFT JOIN Shain sa ON sa.Id = s.ShainId
+                WHERE m.SectorId = @sectorId
                 ORDER BY s.Id DESC
                 LIMIT 100;";
 
-            return conn.Query(sql);
+            return conn.Query(sql, new { sectorId });
+        }
+
+        private static int ResolveGBareruSectorId(System.Data.IDbConnection conn)
+        {
+            return conn.ExecuteScalar<int?>(
+                "SELECT Id FROM Sectors WHERE Code = 'G-BARERU' COLLATE NOCASE AND IsActive = 1;")
+                ?? throw new InvalidOperationException("Setor G-Bareru nao configurado.");
         }
 
         private void PostJson(object payload)

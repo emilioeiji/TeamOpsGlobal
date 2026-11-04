@@ -163,15 +163,23 @@ namespace TeamOps.UI.Forms
                     break;
 
                 case "open:pr_report":
-                    OpenDialog(() => new HTMLFormPrClReport(_factory, isPr: true));
+                    OpenDialog(() => new HTMLFormPrClReport(
+                        _factory,
+                        Program.CurrentUser ?? throw new InvalidOperationException("Usuario nao autenticado."),
+                        isPr: true));
                     break;
 
                 case "open:cl_report":
-                    OpenDialog(() => new HTMLFormPrClReport(_factory, isPr: false));
+                    OpenDialog(() => new HTMLFormPrClReport(
+                        _factory,
+                        Program.CurrentUser ?? throw new InvalidOperationException("Usuario nao autenticado."),
+                        isPr: false));
                     break;
 
                 case "open:sobra_report":
-                    OpenDialog(() => new HTMLFormSobraDePecaReport(_factory));
+                    OpenDialog(() => new HTMLFormSobraDePecaReport(
+                        _factory,
+                        Program.CurrentUser ?? throw new InvalidOperationException("Usuario nao autenticado.")));
                     break;
             }
         }

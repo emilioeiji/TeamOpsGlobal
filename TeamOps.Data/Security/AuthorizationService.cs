@@ -115,6 +115,21 @@ namespace TeamOps.Data.Security
                     $"Acesso negado para {moduleCode}:{actionCode} no escopo solicitado.");
         }
 
+        public void DemandSectorOrAggregate(int userId, string moduleCode, string actionCode, int sectorId)
+        {
+            if (sectorId > 0)
+            {
+                Demand(userId, moduleCode, actionCode, sectorId);
+                return;
+            }
+
+            var context = GetContext(userId);
+            if (!string.Equals(context.ScopeMode, "OrganizationTree", StringComparison.Ordinal))
+                throw new UnauthorizedAccessException("Este perfil deve informar um setor explicito.");
+
+            Demand(userId, moduleCode, actionCode);
+        }
+
         private static HashSet<int> GetTreeSectorIds(Microsoft.Data.Sqlite.SqliteConnection conn, int referenceNodeId)
         {
             using var cmd = conn.CreateCommand();

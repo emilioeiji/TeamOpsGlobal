@@ -9,21 +9,19 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using TeamOps.Core.Entities;
+using TeamOps.Core.Security;
 using TeamOps.Data.Db;
 using TeamOps.Data.Repositories;
+using TeamOps.Data.Security;
 using TeamOps.UI.Services;
 
 namespace TeamOps.UI.Forms
 {
     public partial class HTMLFormPresenceLayout : Form
     {
-        private static readonly SectorDefinition[] SectorDefinitions =
-        {
-            new(1, "G-Bareru"),
-            new(2, "DAD")
-        };
-
         private readonly SqliteConnectionFactory _factory;
+        private readonly User _currentUser;
+        private readonly AuthorizationService _authorization;
         private readonly OperatorPresenceRepository _presenceRepo;
         private readonly OperatorRepository _operatorRepo;
         private readonly ShiftRepository _shiftRepo;
@@ -31,13 +29,15 @@ namespace TeamOps.UI.Forms
         private readonly HaidaiModuleService _haidaiService;
         private readonly int _defaultShiftId;
 
-        public HTMLFormPresenceLayout(SqliteConnectionFactory factory, int defaultShiftId)
+        public HTMLFormPresenceLayout(SqliteConnectionFactory factory, User currentUser, int defaultShiftId)
         {
             InitializeComponent();
             Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
             Text = L("Presenca por Setor", "セクター出勤レイアウト");
 
             _factory = factory;
+            _currentUser = currentUser;
+            _authorization = new AuthorizationService(factory);
             _defaultShiftId = defaultShiftId;
             _presenceRepo = new OperatorPresenceRepository(factory);
             _operatorRepo = new OperatorRepository(factory);
@@ -102,8 +102,13 @@ namespace TeamOps.UI.Forms
 
         private void LoadInitialData()
         {
+            _authorization.Demand(_currentUser.Id, ModuleCodes.Presence, PermissionActions.View);
+            var visibleSectorIds = GetVisibleSectorIds();
             var shifts = _shiftRepo.GetAll();
-            var locals = _localRepo.GetAll();
+            var locals = _localRepo.GetAll()
+                .Where(local => visibleSectorIds.Contains(local.SectorId))
+                .ToList();
+            var sectors = GetSectorDefinitions(visibleSectorIds);
             var today = DateTime.Today;
             var shiftId = shifts.Any(s => s.Id == _defaultShiftId)
                 ? _defaultShiftId
@@ -133,7 +138,7 @@ namespace TeamOps.UI.Forms
                         namePt = local.NamePt,
                         nameJp = string.IsNullOrWhiteSpace(local.NameJp) ? local.NamePt : local.NameJp
                     }),
-                    sectors = SectorDefinitions.Select(sector => new
+                    sectors = sectors.Select(sector => new
                     {
                         id = sector.Id,
                         name = sector.Name
@@ -149,11 +154,18 @@ namespace TeamOps.UI.Forms
             if (shiftId <= 0)
                 throw new InvalidOperationException(L("Selecione um turno valido.", "有効なシフトを選択してください。"));
 
+            var visibleSectorIds = GetVisibleSectorIds();
+            foreach (var sectorId in visibleSectorIds)
+                _authorization.Demand(_currentUser.Id, ModuleCodes.Presence, PermissionActions.View, sectorId);
+            var sectorDefinitions = GetSectorDefinitions(visibleSectorIds);
+
             var totalWatch = Stopwatch.StartNew();
             var operators = _operatorRepo.GetAll()
+                .Where(op => visibleSectorIds.Contains(op.SectorId))
                 .GroupBy(op => op.CodigoFJ, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
             var locals = _localRepo.GetAll()
+                .Where(local => visibleSectorIds.Contains(local.SectorId))
                 .ToDictionary(local => local.Id);
 
             var schedules = _haidaiService.GetActiveAssignments(date, shiftId)
@@ -168,13 +180,14 @@ namespace TeamOps.UI.Forms
                     LocalId = item.LocalId ?? 0,
                     ScheduleDate = date
                 })
+                .Where(item => visibleSectorIds.Contains(item.SectorId))
                 .ToList();
 
             var presenceBySector = _presenceRepo.GetLatestByDateShift(date, shiftId)
                 .GroupBy(item => item.SectorId)
                 .ToDictionary(group => group.Key, group => (IReadOnlyCollection<OperatorPresence>)group.ToList());
 
-            var sectorStates = SectorDefinitions
+            var sectorStates = sectorDefinitions
                 .Select(sector =>
                 {
                     var sectorSchedule = schedules
@@ -453,6 +466,32 @@ namespace TeamOps.UI.Forms
                     message = ex.Message
                 });
             }
+        }
+
+        private HashSet<int> GetVisibleSectorIds()
+        {
+            var context = _authorization.GetContext(_currentUser.Id);
+            if (string.Equals(context.ScopeMode, "OrganizationTree", StringComparison.Ordinal))
+                return context.AuthorizedSectorIds.ToHashSet();
+
+            var selectedSectorId = Program.CurrentSession?.SelectedSectorId;
+            if (!selectedSectorId.HasValue || !context.AuthorizedSectorIds.Contains(selectedSectorId.Value))
+                throw new UnauthorizedAccessException(L("Selecione um setor autorizado no dashboard.", "ダッシュボードで許可されたセクターを選択してください。"));
+
+            return [selectedSectorId.Value];
+        }
+
+        private IReadOnlyList<SectorDefinition> GetSectorDefinitions(IReadOnlySet<int> sectorIds)
+        {
+            return new SectorRepository(_factory).GetAll()
+                .Where(sector => sectorIds.Contains(sector.Id))
+                .OrderBy(sector => sector.NamePt)
+                .Select(sector => new SectorDefinition(
+                    sector.Id,
+                    string.Equals(Program.CurrentLocale, "ja-JP", StringComparison.OrdinalIgnoreCase)
+                        ? string.IsNullOrWhiteSpace(sector.NameJp) ? sector.NamePt : sector.NameJp
+                        : sector.NamePt))
+                .ToList();
         }
 
         private static string ReadString(JsonElement root, string propertyName)

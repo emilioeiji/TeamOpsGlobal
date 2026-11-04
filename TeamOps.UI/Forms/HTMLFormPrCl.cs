@@ -8,8 +8,10 @@ using System.Linq;
 using System.Text.Json;
 using System.Windows.Forms;
 using TeamOps.Core.Entities;
+using TeamOps.Core.Security;
 using TeamOps.Data.Db;
 using TeamOps.Data.Repositories;
+using TeamOps.Data.Security;
 
 namespace TeamOps.UI.Forms
 {
@@ -17,14 +19,18 @@ namespace TeamOps.UI.Forms
     {
         private readonly SqliteConnectionFactory _factory;
         private readonly Operator _currentOperator;
+        private readonly User _currentUser;
+        private readonly AuthorizationService _authorization;
         private readonly bool _isPr;
         private readonly Microsoft.Web.WebView2.WinForms.WebView2 _webView;
 
-        public HTMLFormPrCl(SqliteConnectionFactory factory, Operator currentOperator, bool isPr)
+        public HTMLFormPrCl(SqliteConnectionFactory factory, User currentUser, Operator currentOperator, bool isPr)
         {
             _factory = factory;
+            _currentUser = currentUser;
             _currentOperator = currentOperator;
             _isPr = isPr;
+            _authorization = new AuthorizationService(factory);
 
             Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
             Text = _isPr ? L("PR", "PR") : L("CL", "CL");
@@ -91,7 +97,11 @@ namespace TeamOps.UI.Forms
 
         private void SendInit()
         {
-            var sectors = new SectorRepository(_factory).GetAll().ToList();
+            _authorization.Demand(_currentUser.Id, ModuleCodes.PrCl, PermissionActions.Create);
+            var authorizedSectorIds = _authorization.GetContext(_currentUser.Id).AuthorizedSectorIds;
+            var sectors = new SectorRepository(_factory).GetAll()
+                .Where(item => authorizedSectorIds.Contains(item.Id))
+                .ToList();
             var categories = _isPr
                 ? new PRCategoriaRepository(_factory).GetAll()
                 : new CLCategoriaRepository(_factory).GetAll();
@@ -128,6 +138,11 @@ namespace TeamOps.UI.Forms
                 ReadString(root, "fileName").Trim());
 
             ValidateInput(input);
+            _authorization.Demand(
+                _currentUser.Id,
+                ModuleCodes.PrCl,
+                PermissionActions.Create,
+                input.SectorId);
 
             var id = _isPr
                 ? new PRRepository(_factory).Add(new PR
@@ -229,7 +244,7 @@ namespace TeamOps.UI.Forms
         {
             var ws = wb.Worksheet("Operadores");
             var operators = new OperatorRepository(_factory).GetAll()
-                .Where(op => op.Status && (op.SectorId == sectorId || op.SectorId == 3))
+                .Where(op => op.Status && op.SectorId == sectorId)
                 .OrderBy(op => op.NameRomanji)
                 .ToList();
 

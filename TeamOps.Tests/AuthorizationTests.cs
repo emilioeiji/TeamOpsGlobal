@@ -9,6 +9,34 @@ namespace TeamOps.Tests;
 
 public sealed class AuthorizationTests
 {
+    [Fact]
+    public void AssignedProfile_CannotRequestAggregateScope()
+    {
+        using var context = new DatabaseTestContext();
+        var userId = CreateUser(context, "GL", "5552", "DAD", "G-BARERU");
+        var authorization = new AuthorizationService(context.Factory);
+
+        Assert.Throws<UnauthorizedAccessException>(() =>
+            authorization.DemandSectorOrAggregate(userId, ModuleCodes.Haidai, PermissionActions.View, 0));
+        authorization.DemandSectorOrAggregate(
+            userId,
+            ModuleCodes.Haidai,
+            PermissionActions.View,
+            GetSectorId(context, "DAD"));
+    }
+
+    [Fact]
+    public void OrganizationProfile_CanRequestAggregateScope()
+    {
+        using var context = new DatabaseTestContext();
+        var userId = CreateUser(context, "MANAGER", "5552");
+
+        new AuthorizationService(context.Factory).DemandSectorOrAggregate(
+            userId,
+            ModuleCodes.Haidai,
+            PermissionActions.View,
+            0);
+    }
     [Theory]
     [InlineData("DIRECTOR", "5500", 4)]
     [InlineData("MANAGER", "5552", 4)]

@@ -15,6 +15,12 @@ namespace TeamOps.Core.Security
     {
         public const string Dashboard = "dashboard";
         public const string Hikitsugui = "hikitsugui";
+        public const string Haidai = "haidai";
+        public const string Presence = "presence";
+        public const string Production = "production";
+        public const string SobraDePeca = "sobradepeca";
+        public const string PrCl = "prcl";
+        public const string Reports = "reports";
         public const string Organization = "organization";
         public const string AccessControl = "accesscontrol";
     }

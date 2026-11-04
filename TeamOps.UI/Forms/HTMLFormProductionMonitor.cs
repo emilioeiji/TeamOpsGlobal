@@ -10,8 +10,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using TeamOps.Core.Entities;
+using TeamOps.Core.Security;
 using TeamOps.Data.Db;
 using TeamOps.Data.Repositories;
+using TeamOps.Data.Security;
 using TeamOps.Services;
 using TeamOps.UI.Forms.Models;
 using TeamOps.UI.Services;
@@ -26,6 +28,7 @@ namespace TeamOps.UI.Forms
         private readonly ProductionAnalyticsService _analyticsService;
         private readonly GBareruCapacityForecastService _forecastService;
         private readonly ProductionFileImporter _fileImporter;
+        private readonly AuthorizationService _authorization;
         private readonly SemaphoreSlim _databaseOperationGate = new(1, 1);
         private readonly Dictionary<string, string> _operatorDetailJsonCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly object _operatorDetailCacheLock = new();
@@ -50,6 +53,7 @@ namespace TeamOps.UI.Forms
             _analyticsService = new ProductionAnalyticsService(factory);
             _forecastService = new GBareruCapacityForecastService(factory);
             _fileImporter = new ProductionFileImporter(factory, machineRepository, eventRepository);
+            _authorization = new AuthorizationService(factory);
 
             InitializeWebView();
         }
@@ -147,8 +151,15 @@ namespace TeamOps.UI.Forms
 
         private async Task LoadInitialAsync()
         {
+            _authorization.Demand(_currentUser.Id, ModuleCodes.Production, PermissionActions.View);
+            var access = _authorization.GetContext(_currentUser.Id);
+            var authorizedSectorIds = access.AuthorizedSectorIds;
             var defaultDate = DateTime.Today;
             var defaultShiftId = _currentOperator.ShiftId;
+            var defaultSectorId = Program.CurrentSession?.SelectedSectorId
+                ?? (string.Equals(access.ScopeMode, "OrganizationTree", StringComparison.Ordinal)
+                    ? 0
+                    : authorizedSectorIds.FirstOrDefault());
 
             await _databaseOperationGate.WaitAsync();
             try
@@ -172,7 +183,8 @@ namespace TeamOps.UI.Forms
                             defaults = new
                             {
                                 dateIso = defaultDate.ToString("yyyy-MM-dd"),
-                                shiftId = defaultShiftId
+                                shiftId = defaultShiftId,
+                                sectorId = defaultSectorId
                             },
                             shifts = conn.Query(
                                 @"
@@ -191,7 +203,7 @@ namespace TeamOps.UI.Forms
                                         COALESCE(NULLIF(NameJp, ''), NamePt, '') AS nameJp
                                     FROM Sectors
                                     ORDER BY Id;"
-                            ).ToList(),
+                            ).Where(item => authorizedSectorIds.Contains((int)item.id)).ToList(),
                             locals = conn.Query(
                                 @"
                                     SELECT
@@ -201,7 +213,7 @@ namespace TeamOps.UI.Forms
                                         COALESCE(NULLIF(l.NameJp, ''), l.NamePt, '') AS nameJp
                                     FROM Locals l
                                     ORDER BY l.SectorId, l.Id;"
-                            ).ToList(),
+                            ).Where(item => item.sectorId != null && authorizedSectorIds.Contains((int)item.sectorId)).ToList(),
                             machines = conn.Query(
                                 @"
                                     SELECT
@@ -215,7 +227,7 @@ namespace TeamOps.UI.Forms
                                     FROM Machines m
                                     WHERE COALESCE(m.IsActive, 1) = 1
                                     ORDER BY COALESCE(m.SectorId, 0), COALESCE(m.LocalId, 0), COALESCE(m.LineCode, ''), COALESCE(m.MachineCode, ''), COALESCE(m.NamePt, ''), m.Id;"
-                            ).ToList(),
+                            ).Where(item => item.sectorId != null && authorizedSectorIds.Contains((int)item.sectorId)).ToList(),
                             statuses = LoadStatuses(conn)
                         }
                     };
@@ -231,12 +243,14 @@ namespace TeamOps.UI.Forms
             await SendDashboardAsync(new ProductionDashboardFilter
             {
                 Date = defaultDate,
-                ShiftId = defaultShiftId
+                ShiftId = defaultShiftId,
+                SectorId = defaultSectorId
             });
         }
 
         private async Task SendDashboardAsync(ProductionDashboardFilter filter)
         {
+            DemandProductionScope(PermissionActions.View, filter.SectorId);
             ClearOperatorDetailCache();
             await _databaseOperationGate.WaitAsync();
             try
@@ -464,6 +478,7 @@ namespace TeamOps.UI.Forms
             ClearOperatorDetailCache();
             try
             {
+                DemandProductionScope(PermissionActions.Edit, 0);
                 await _databaseOperationGate.WaitAsync();
                 ProductionImportResult result;
                 try
@@ -559,6 +574,12 @@ namespace TeamOps.UI.Forms
             await _databaseOperationGate.WaitAsync();
             try
             {
+                var sectorId = GetMachineSectorId(machineId);
+                _authorization.Demand(
+                    _currentUser.Id,
+                    ModuleCodes.Production,
+                    PermissionActions.View,
+                    sectorId);
                 var rows = await Task.Run(() =>
                 {
                     using var conn = _factory.CreateOpenConnection();
@@ -611,6 +632,7 @@ namespace TeamOps.UI.Forms
 
         private async Task SendOperatorDetailAsync(ProductionDashboardFilter filter, string operatorCodigoFJ)
         {
+            DemandProductionScope(PermissionActions.View, filter.SectorId);
             var cacheKey = BuildOperatorDetailCacheKey(filter, operatorCodigoFJ);
             lock (_operatorDetailCacheLock)
             {
@@ -892,6 +914,37 @@ namespace TeamOps.UI.Forms
                 MachineId = ReadInt(root, "machineId", 0),
                 MachineCode = ReadString(root, "machineCode").Trim()
             };
+        }
+
+        private void DemandProductionScope(string action, int sectorId)
+        {
+            _authorization.DemandSectorOrAggregate(
+                _currentUser.Id,
+                ModuleCodes.Production,
+                action,
+                sectorId);
+
+            if (sectorId > 0)
+                return;
+
+            var authorized = _authorization.GetContext(_currentUser.Id).AuthorizedSectorIds;
+            using var conn = _factory.CreateOpenConnection();
+            var allActive = conn.Query<int>("SELECT Id FROM Sectors WHERE IsActive = 1;").ToHashSet();
+            if (!allActive.SetEquals(authorized))
+                throw new UnauthorizedAccessException(L(
+                    "Selecione um setor explicito para este escopo.",
+                    "この範囲ではセクターを明示的に選択してください。"));
+        }
+
+        private int GetMachineSectorId(int machineId)
+        {
+            using var conn = _factory.CreateOpenConnection();
+            var sectorId = conn.ExecuteScalar<int?>(
+                "SELECT SectorId FROM Machines WHERE Id = @machineId AND COALESCE(IsActive, 1) = 1;",
+                new { machineId });
+            return sectorId ?? throw new InvalidOperationException(L(
+                "Maquina nao encontrada.",
+                "設備が見つかりません。"));
         }
 
         private void PostJson(object payload)

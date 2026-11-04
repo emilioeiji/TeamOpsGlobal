@@ -155,6 +155,7 @@ namespace TeamOps.UI.Forms
                     else
                         OpenDialog(() => new HTMLFormPresenceLayout(
                             _factory,
+                            _user,
                             _currentShift.Id
                         ));
                     break;
@@ -242,6 +243,7 @@ namespace TeamOps.UI.Forms
                     else
                         OpenDialog(() => new HTMLFormSobraDePeca(
                             _factory,
+                            _user,
                             _currentOperator
                         ));
                     break;
@@ -250,14 +252,14 @@ namespace TeamOps.UI.Forms
                     if (!HasAccess(AccessLevel.KL))
                         ShowAccessDeniedAsync();
                     else
-                        OpenDialog(() => new HTMLFormPrCl(_factory, _currentOperator, isPr: true));
+                        OpenDialog(() => new HTMLFormPrCl(_factory, _user, _currentOperator, isPr: true));
                     break;
 
                 case "open:cl":
                     if (!HasAccess(AccessLevel.KL))
                         ShowAccessDeniedAsync();
                     else
-                        OpenDialog(() => new HTMLFormPrCl(_factory, _currentOperator, isPr: false));
+                        OpenDialog(() => new HTMLFormPrCl(_factory, _user, _currentOperator, isPr: false));
                     break;
 
                 case "open:yukyu":
