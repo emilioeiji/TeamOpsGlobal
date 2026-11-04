@@ -8,7 +8,10 @@ using System.Linq;
 using System.Text.Json;
 using System.Windows.Forms;
 using TeamOps.Core.Entities;
+using TeamOps.Core.Security;
+using TeamOps.Data.Db;
 using TeamOps.Data.Repositories;
+using TeamOps.Data.Security;
 
 namespace TeamOps.UI.Forms
 {
@@ -20,6 +23,8 @@ namespace TeamOps.UI.Forms
         private readonly SectorRepository _sectorRepo;
         private readonly FollowUpReasonRepository _reasonRepo;
         private readonly FollowUpTypeRepository _typeRepo;
+        private readonly User _currentUser;
+        private readonly AuthorizationService _authorization;
 
         public HTMLFormFollowReport(
             FollowUpRepository followRepo,
@@ -29,7 +34,9 @@ namespace TeamOps.UI.Forms
             FollowUpReasonRepository reasonRepo,
             FollowUpTypeRepository typeRepo,
             EquipmentRepository equipRepo,
-            LocalRepository localRepo)
+            LocalRepository localRepo,
+            SqliteConnectionFactory factory,
+            User currentUser)
         {
             InitializeComponent();
             Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
@@ -41,6 +48,8 @@ namespace TeamOps.UI.Forms
             _sectorRepo = sectorRepo;
             _reasonRepo = reasonRepo;
             _typeRepo = typeRepo;
+            _currentUser = currentUser;
+            _authorization = new AuthorizationService(factory);
 
             InitializeWebView();
         }
@@ -111,7 +120,13 @@ namespace TeamOps.UI.Forms
 
         private void LoadInitial()
         {
+            _authorization.Demand(_currentUser.Id, ModuleCodes.FollowUp, PermissionActions.View);
+            var context = _authorization.GetContext(_currentUser.Id);
             var filter = CreateDefaultFilter();
+            filter.SectorId = Program.CurrentSession?.SelectedSectorId
+                ?? (string.Equals(context.ScopeMode, "OrganizationTree", StringComparison.Ordinal)
+                    ? 0
+                    : context.AuthorizedSectorIds.FirstOrDefault());
 
             PostJson(new
             {
@@ -127,7 +142,7 @@ namespace TeamOps.UI.Forms
                         shiftId = 0,
                         typeId = 0,
                         reasonId = 0,
-                        sectorId = 0,
+                        sectorId = filter.SectorId,
                         search = ""
                     }
                 }
@@ -171,6 +186,7 @@ namespace TeamOps.UI.Forms
 
         private object BuildFilterOptions()
         {
+            var context = _authorization.GetContext(_currentUser.Id);
             var shifts = _shiftRepo.GetAll()
                 .Select(x => new { id = x.Id, name = x.NamePt })
                 .ToList();
@@ -187,9 +203,11 @@ namespace TeamOps.UI.Forms
             reasons.Insert(0, new { id = 0, name = L("Todos", "\u3059\u3079\u3066") });
 
             var sectors = _sectorRepo.GetAll()
+                .Where(x => context.AuthorizedSectorIds.Contains(x.Id))
                 .Select(x => new { id = x.Id, name = x.NamePt })
                 .ToList();
-            sectors.Insert(0, new { id = 0, name = L("Todos", "\u3059\u3079\u3066") });
+            if (string.Equals(context.ScopeMode, "OrganizationTree", StringComparison.Ordinal))
+                sectors.Insert(0, new { id = 0, name = L("Todos", "\u3059\u3079\u3066") });
 
             return new
             {
@@ -202,7 +220,14 @@ namespace TeamOps.UI.Forms
 
         private List<FollowUp> GetFilteredRows(FollowFilter filter)
         {
+            _authorization.DemandSectorOrAggregate(
+                _currentUser.Id,
+                ModuleCodes.FollowUp,
+                PermissionActions.View,
+                filter.SectorId);
+            var authorizedSectorIds = _authorization.GetContext(_currentUser.Id).AuthorizedSectorIds;
             var list = _followRepo.GetByPeriod(filter.Start.Date, filter.End.Date.AddDays(1));
+            list = list.Where(x => authorizedSectorIds.Contains(x.SectorId)).ToList();
 
             if (filter.ShiftId > 0)
                 list = list.Where(x => x.ShiftId == filter.ShiftId).ToList();
@@ -227,6 +252,11 @@ namespace TeamOps.UI.Forms
 
         private void ExportRows(FollowFilter filter)
         {
+            _authorization.DemandSectorOrAggregate(
+                _currentUser.Id,
+                ModuleCodes.FollowUp,
+                PermissionActions.Export,
+                filter.SectorId);
             var rows = GetFilteredRows(filter);
             if (rows.Count == 0)
             {
@@ -299,6 +329,10 @@ namespace TeamOps.UI.Forms
         {
             if (id <= 0)
                 return;
+
+            var followUp = _followRepo.GetByIdWithJoins(id)
+                ?? throw new InvalidOperationException(L("Follow nao encontrado.", "Follow が見つかりません。"));
+            _authorization.Demand(_currentUser.Id, ModuleCodes.FollowUp, PermissionActions.View, followUp.SectorId);
 
             OpenDialog(() => new HTMLFormFollowSingleReport(
                 id,

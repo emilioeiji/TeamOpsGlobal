@@ -125,7 +125,9 @@ namespace TeamOps.UI.Forms
                         new FollowUpReasonRepository(_factory),
                         new FollowUpTypeRepository(_factory),
                         new EquipmentRepository(_factory),
-                        new LocalRepository(_factory)
+                        new LocalRepository(_factory),
+                        _factory,
+                        Program.CurrentUser ?? throw new InvalidOperationException("Usuario nao autenticado.")
                     ));
                     break;
 
@@ -138,7 +140,9 @@ namespace TeamOps.UI.Forms
                         new FollowUpReasonRepository(_factory),
                         new FollowUpTypeRepository(_factory),
                         new EquipmentRepository(_factory),
-                        new LocalRepository(_factory)
+                        new LocalRepository(_factory),
+                        _factory,
+                        Program.CurrentUser ?? throw new InvalidOperationException("Usuario nao autenticado.")
                     ));
                     break;
 
@@ -159,7 +163,9 @@ namespace TeamOps.UI.Forms
                     break;
 
                 case "open:mastercard_report":
-                    OpenDialog(() => new HTMLFormMasterCardReport(_factory));
+                    OpenDialog(() => new HTMLFormMasterCardReport(
+                        _factory,
+                        Program.CurrentUser ?? throw new InvalidOperationException("Usuario nao autenticado.")));
                     break;
 
                 case "open:pr_report":

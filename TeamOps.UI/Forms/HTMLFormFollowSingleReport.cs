@@ -6,7 +6,9 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using TeamOps.Core.Entities;
+using TeamOps.Core.Security;
 using TeamOps.Data.Repositories;
+using TeamOps.Data.Security;
 
 namespace TeamOps.UI.Forms
 {
@@ -15,6 +17,8 @@ namespace TeamOps.UI.Forms
         private readonly int _followId;
         private readonly FollowUpRepository _followRepo;
         private readonly OperatorRepository _opRepo;
+        private readonly User _currentUser;
+        private readonly AuthorizationService _authorization;
 
         public HTMLFormFollowSingleReport(
             int followId,
@@ -28,6 +32,8 @@ namespace TeamOps.UI.Forms
             _followId = followId;
             _followRepo = followRepo;
             _opRepo = opRepo;
+            _currentUser = Program.CurrentUser ?? throw new InvalidOperationException("Usuario nao autenticado.");
+            _authorization = new AuthorizationService(Program.ConnectionFactory);
 
             InitializeWebView();
         }
@@ -98,6 +104,7 @@ namespace TeamOps.UI.Forms
                 SendNotify(L("Nao encontrado", "\u672a\u691c\u51fa"), L("FollowUp nao encontrado.", "\u30d5\u30a9\u30ed\u30fc\u304c\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3002"));
                 return;
             }
+            _authorization.Demand(_currentUser.Id, ModuleCodes.FollowUp, PermissionActions.View, follow.SectorId);
 
             var op = _opRepo.GetByCodigoFJ(follow.OperatorCodigoFJ);
             var ex = _opRepo.GetByCodigoFJ(follow.ExecutorCodigoFJ);
@@ -160,6 +167,10 @@ namespace TeamOps.UI.Forms
 
         private async Task SavePdfAsync()
         {
+            var follow = _followRepo.GetByIdWithJoins(_followId)
+                ?? throw new InvalidOperationException(L("FollowUp nao encontrado.", "フォローが見つかりません。"));
+            _authorization.Demand(_currentUser.Id, ModuleCodes.FollowUp, PermissionActions.Export, follow.SectorId);
+
             if (webViewFollowSingle.CoreWebView2 == null)
                 return;
 

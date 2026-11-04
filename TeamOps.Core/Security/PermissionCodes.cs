@@ -20,6 +20,9 @@ namespace TeamOps.Core.Security
         public const string Production = "production";
         public const string SobraDePeca = "sobradepeca";
         public const string PrCl = "prcl";
+        public const string FollowUp = "followup";
+        public const string Tasks = "tasks";
+        public const string MasterCard = "mastercard";
         public const string Reports = "reports";
         public const string Organization = "organization";
         public const string AccessControl = "accesscontrol";

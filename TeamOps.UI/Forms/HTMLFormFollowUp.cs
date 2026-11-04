@@ -6,8 +6,10 @@ using System.Linq;
 using System.Text.Json;
 using System.Windows.Forms;
 using TeamOps.Core.Entities;
+using TeamOps.Core.Security;
 using TeamOps.Data.Db;
 using TeamOps.Data.Repositories;
+using TeamOps.Data.Security;
 using TeamOps.UI.Forms.Models;
 
 namespace TeamOps.UI.Forms
@@ -25,6 +27,7 @@ namespace TeamOps.UI.Forms
         private readonly LocalRepository _localRepo;
         private readonly EquipmentRepository _equipmentRepo;
         private readonly SectorRepository _sectorRepo;
+        private readonly AuthorizationService _authorization;
 
         public HTMLFormFollowUp(
             SqliteConnectionFactory factory,
@@ -47,6 +50,7 @@ namespace TeamOps.UI.Forms
             _localRepo = new LocalRepository(_factory);
             _equipmentRepo = new EquipmentRepository(_factory);
             _sectorRepo = new SectorRepository(_factory);
+            _authorization = new AuthorizationService(_factory);
 
             InitializeWebView();
         }
@@ -113,6 +117,10 @@ namespace TeamOps.UI.Forms
 
         private void LoadInitial()
         {
+            _authorization.Demand(_user.Id, ModuleCodes.FollowUp, PermissionActions.View);
+            var context = _authorization.GetContext(_user.Id);
+            var authorizedSectorIds = context.AuthorizedSectorIds;
+
             var shifts = _shiftRepo.GetAll()
                 .Select(x => new
                 {
@@ -123,6 +131,7 @@ namespace TeamOps.UI.Forms
                 .ToList();
 
             var sectors = _sectorRepo.GetAll()
+                .Where(x => authorizedSectorIds.Contains(x.Id))
                 .Select(x => new
                 {
                     id = x.Id,
@@ -150,6 +159,7 @@ namespace TeamOps.UI.Forms
                 .ToList();
 
             var locals = _localRepo.GetAll()
+                .Where(x => authorizedSectorIds.Contains(x.SectorId))
                 .Select(x => new
                 {
                     id = x.Id,
@@ -169,7 +179,7 @@ namespace TeamOps.UI.Forms
                 .ToList();
 
             var operators = _operatorRepo.GetAll()
-                .Where(x => x.Status)
+                .Where(x => x.Status && authorizedSectorIds.Contains(x.SectorId))
                 .Select(x => new
                 {
                     codigoFJ = x.CodigoFJ,
@@ -210,7 +220,10 @@ namespace TeamOps.UI.Forms
                     {
                         date = DateTime.Today.ToString("yyyy-MM-dd"),
                         shiftId = _currentOperator.ShiftId,
-                        sectorId = _currentOperator.SectorId,
+                        sectorId = Program.CurrentSession?.SelectedSectorId
+                            ?? (authorizedSectorIds.Contains(_currentOperator.SectorId)
+                                ? _currentOperator.SectorId
+                                : authorizedSectorIds.FirstOrDefault()),
                         executorCodigoFJ = _currentOperator.CodigoFJ,
                         executorNamePt = string.IsNullOrWhiteSpace(_currentOperator.NameRomanji)
                             ? _currentOperator.CodigoFJ
@@ -249,6 +262,23 @@ namespace TeamOps.UI.Forms
                 });
                 return;
             }
+
+            _authorization.Demand(_user.Id, ModuleCodes.FollowUp, PermissionActions.Create, msg.sectorId);
+            var selectedOperator = _operatorRepo.GetAll()
+                .FirstOrDefault(item => string.Equals(
+                    item.CodigoFJ,
+                    msg.operatorCodigoFJ.Trim(),
+                    StringComparison.OrdinalIgnoreCase));
+            if (selectedOperator == null || !selectedOperator.Status || selectedOperator.SectorId != msg.sectorId)
+                throw new InvalidOperationException(L(
+                    "O operador selecionado nao pertence ao setor informado.",
+                    "選択した作業者は指定したセクターに所属していません。"));
+
+            var selectedLocal = _localRepo.GetAll().FirstOrDefault(item => item.Id == msg.localId);
+            if (selectedLocal == null || selectedLocal.SectorId != msg.sectorId)
+                throw new InvalidOperationException(L(
+                    "O local selecionado nao pertence ao setor informado.",
+                    "選択した場所は指定したセクターに属していません。"));
 
             var now = DateTime.Now;
             var date = now;

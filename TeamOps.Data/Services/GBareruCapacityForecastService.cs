@@ -11,7 +11,7 @@ namespace TeamOps.UI.Services
 {
     public sealed class GBareruCapacityForecastService
     {
-        private const int GBareruSectorId = 1;
+        private const string GBareruSectorCode = "G-BARERU";
         private const string EciiCode = "ECII";
         private const string BunkatsuCode = "BUNKATSU";
         private const string DcsCode = "DCS";
@@ -29,8 +29,17 @@ namespace TeamOps.UI.Services
         {
             var watch = Stopwatch.StartNew();
             var result = new GBareruCapacityForecastDto();
+            var gBareruSectorId = ResolveGBareruSectorId();
 
-            if (filter.SectorId > 0 && filter.SectorId != GBareruSectorId)
+            if (gBareruSectorId <= 0)
+            {
+                result.Message = "Setor G-Bareru nao configurado.";
+                WriteDiagnostic(result.Message);
+                result.CalculationMs = watch.ElapsedMilliseconds;
+                return result;
+            }
+
+            if (filter.SectorId > 0 && filter.SectorId != gBareruSectorId)
             {
                 result.Message = "Previsao disponivel apenas para G-Bareru.";
                 WriteDiagnostic(result.Message);
@@ -39,7 +48,7 @@ namespace TeamOps.UI.Services
             }
 
             var gBareruAreas = dashboard.Areas
-                .Where(area => area.SectorId == GBareruSectorId)
+                .Where(area => area.SectorId == gBareruSectorId)
                 .Where(area => filter.LocalId <= 0 || area.LocalId == filter.LocalId)
                 .ToList();
 
@@ -55,7 +64,7 @@ namespace TeamOps.UI.Services
 
             foreach (var area in gBareruAreas)
             {
-                var times = LoadProcedureTimes(area.LocalId ?? 0);
+                var times = LoadProcedureTimes(gBareruSectorId, area.LocalId ?? 0);
                 var areaForecast = BuildAreaForecast(area, times);
                 areaForecasts.Add(areaForecast);
                 result.Areas.Add(areaForecast.Forecast);
@@ -103,7 +112,21 @@ namespace TeamOps.UI.Services
             return result;
         }
 
-        private Dictionary<string, double> LoadProcedureTimes(int localId)
+        private int ResolveGBareruSectorId()
+        {
+            using var conn = _factory.CreateOpenConnection();
+            return conn.QuerySingleOrDefault<int>(
+                @"
+                    SELECT Id
+                    FROM Sectors
+                    WHERE IsActive = 1
+                      AND Code = @Code COLLATE NOCASE
+                    ORDER BY Id
+                    LIMIT 1;",
+                new { Code = GBareruSectorCode });
+        }
+
+        private Dictionary<string, double> LoadProcedureTimes(int sectorId, int localId)
         {
             using var conn = _factory.CreateOpenConnection();
             ProductionSchemaMigrator.Ensure(conn);
@@ -122,7 +145,7 @@ namespace TeamOps.UI.Services
                     ORDER BY COALESCE(LocalId, 0) DESC;",
                 new
                 {
-                    SectorId = GBareruSectorId,
+                    SectorId = sectorId,
                     LocalId = localId,
                     Codes = new[] { EciiCode, BunkatsuCode, DcsCode }.Concat(BreakCodes).ToArray()
                 })

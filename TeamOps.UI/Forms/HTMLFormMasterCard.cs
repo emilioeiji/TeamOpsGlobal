@@ -5,7 +5,9 @@ using System.Linq;
 using System.Text.Json;
 using System.Windows.Forms;
 using TeamOps.Core.Entities;
+using TeamOps.Core.Security;
 using TeamOps.Data.Db;
+using TeamOps.Data.Security;
 using TeamOps.UI.Forms.Models;
 using TeamOps.UI.Services;
 
@@ -16,6 +18,7 @@ namespace TeamOps.UI.Forms
         private readonly SqliteConnectionFactory _factory;
         private readonly User _currentUser;
         private readonly Operator _currentOperator;
+        private readonly AuthorizationService _authorization;
 
         public HTMLFormMasterCard(
             SqliteConnectionFactory factory,
@@ -29,6 +32,7 @@ namespace TeamOps.UI.Forms
             _factory = factory;
             _currentUser = currentUser;
             _currentOperator = currentOperator;
+            _authorization = new AuthorizationService(factory);
 
             InitializeWebView();
         }
@@ -80,6 +84,8 @@ namespace TeamOps.UI.Forms
 
         private void LoadInitialData()
         {
+            _authorization.Demand(_currentUser.Id, ModuleCodes.MasterCard, PermissionActions.View);
+            var authorizedSectorIds = _authorization.GetContext(_currentUser.Id).AuthorizedSectorIds;
             using var conn = _factory.CreateOpenConnection();
             MasterCardModuleService.EnsureSchema(conn);
 
@@ -93,11 +99,11 @@ namespace TeamOps.UI.Forms
                     : _currentOperator.NameNihongo,
                 currentUser = _currentUser.Name,
                 statuses = MasterCardModuleService.QueryStatuses().ToList(),
-                operators = MasterCardModuleService.QueryOperators(conn).ToList(),
-                trainers = MasterCardModuleService.QueryTrainers(conn).ToList(),
-                sectors = MasterCardModuleService.QuerySectors(conn).ToList(),
+                operators = MasterCardModuleService.QueryOperators(conn, authorizedSectorIds).ToList(),
+                trainers = MasterCardModuleService.QueryTrainers(conn, authorizedSectorIds).ToList(),
+                sectors = MasterCardModuleService.QuerySectors(conn, authorizedSectorIds).ToList(),
                 equipments = MasterCardModuleService.QueryEquipments(conn).ToList(),
-                rows = MasterCardModuleService.QueryMasterCards(conn).Select(ToRowPayload).ToList()
+                rows = MasterCardModuleService.QueryMasterCards(conn, authorizedSectorIds).Select(ToRowPayload).ToList()
             });
         }
 
@@ -110,6 +116,7 @@ namespace TeamOps.UI.Forms
 
                 var current = MasterCardModuleService.GetMasterCard(conn, id)
                     ?? throw new InvalidOperationException(L("MasterCard nao encontrado.", "MasterCard が見つかりません。"));
+                _authorization.Demand(_currentUser.Id, ModuleCodes.MasterCard, PermissionActions.View, current.SectorId);
 
                 PostJson(new
                 {
@@ -124,7 +131,6 @@ namespace TeamOps.UI.Forms
                 PostJson(new { type = "error", message = ex.Message });
             }
         }
-
         private void SaveMasterCard(JsRequest msg)
         {
             try
@@ -133,6 +139,7 @@ namespace TeamOps.UI.Forms
                 MasterCardModuleService.EnsureSchema(conn);
 
                 var input = BuildInput(msg);
+                _authorization.Demand(_currentUser.Id, ModuleCodes.MasterCard, PermissionActions.Create, input.SectorId);
 
                 using var tx = conn.BeginTransaction();
                 MasterCardModuleService.SaveMasterCard(conn, tx, input, _currentOperator.CodigoFJ);
@@ -160,6 +167,10 @@ namespace TeamOps.UI.Forms
                 MasterCardModuleService.EnsureSchema(conn);
 
                 var input = BuildInput(msg);
+                var current = MasterCardModuleService.GetMasterCard(conn, msg.id)
+                    ?? throw new InvalidOperationException(L("MasterCard nao encontrado.", "MasterCard が見つかりません。"));
+                _authorization.Demand(_currentUser.Id, ModuleCodes.MasterCard, PermissionActions.Edit, current.SectorId);
+                _authorization.Demand(_currentUser.Id, ModuleCodes.MasterCard, PermissionActions.Edit, input.SectorId);
 
                 using var tx = conn.BeginTransaction();
                 MasterCardModuleService.UpdateMasterCard(conn, tx, msg.id, input);
@@ -186,6 +197,10 @@ namespace TeamOps.UI.Forms
                 using var conn = _factory.CreateOpenConnection();
                 MasterCardModuleService.EnsureSchema(conn);
 
+                var current = MasterCardModuleService.GetMasterCard(conn, msg.id)
+                    ?? throw new InvalidOperationException(L("MasterCard nao encontrado.", "MasterCard が見つかりません。"));
+                _authorization.Demand(_currentUser.Id, ModuleCodes.MasterCard, PermissionActions.Approve, current.SectorId);
+
                 using var tx = conn.BeginTransaction();
                 var newStatus = MasterCardModuleService.AdvanceStatus(conn, tx, msg.id, _currentOperator.CodigoFJ);
                 tx.Commit();
@@ -208,10 +223,11 @@ namespace TeamOps.UI.Forms
 
         private void SendRows(System.Data.IDbConnection conn)
         {
+            var authorizedSectorIds = _authorization.GetContext(_currentUser.Id).AuthorizedSectorIds;
             PostJson(new
             {
                 type = "rows",
-                data = MasterCardModuleService.QueryMasterCards(conn).Select(ToRowPayload).ToList()
+                data = MasterCardModuleService.QueryMasterCards(conn, authorizedSectorIds).Select(ToRowPayload).ToList()
             });
         }
 

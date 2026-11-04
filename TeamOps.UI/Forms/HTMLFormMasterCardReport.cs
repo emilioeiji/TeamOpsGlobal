@@ -4,7 +4,10 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Windows.Forms;
+using TeamOps.Core.Entities;
+using TeamOps.Core.Security;
 using TeamOps.Data.Db;
+using TeamOps.Data.Security;
 using TeamOps.UI.Services;
 
 namespace TeamOps.UI.Forms
@@ -12,14 +15,18 @@ namespace TeamOps.UI.Forms
     public partial class HTMLFormMasterCardReport : Form
     {
         private readonly SqliteConnectionFactory _factory;
+        private readonly User _currentUser;
+        private readonly AuthorizationService _authorization;
 
-        public HTMLFormMasterCardReport(SqliteConnectionFactory factory)
+        public HTMLFormMasterCardReport(SqliteConnectionFactory factory, User currentUser)
         {
             InitializeComponent();
             Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
             Text = L("Relatorio de MasterCard", "MasterCard Report");
 
             _factory = factory;
+            _currentUser = currentUser;
+            _authorization = new AuthorizationService(factory);
             InitializeWebView();
         }
 
@@ -71,10 +78,17 @@ namespace TeamOps.UI.Forms
 
         private void LoadInitial()
         {
+            _authorization.Demand(_currentUser.Id, ModuleCodes.MasterCard, PermissionActions.View);
+            var context = _authorization.GetContext(_currentUser.Id);
+            var authorizedSectorIds = context.AuthorizedSectorIds;
             using var conn = _factory.CreateOpenConnection();
             MasterCardModuleService.EnsureSchema(conn);
 
             var filter = MasterCardModuleService.CreateDefaultFilter();
+            filter.SectorId = Program.CurrentSession?.SelectedSectorId
+                ?? (string.Equals(context.ScopeMode, "OrganizationTree", StringComparison.Ordinal)
+                    ? 0
+                    : authorizedSectorIds.FirstOrDefault());
 
             PostJson(new
             {
@@ -82,19 +96,20 @@ namespace TeamOps.UI.Forms
                 data = new
                 {
                     locale = Program.CurrentLocale,
+                    allowAggregate = string.Equals(context.ScopeMode, "OrganizationTree", StringComparison.Ordinal),
                     filters = new
                     {
                         statuses = MasterCardModuleService.QueryStatuses().ToList(),
-                        sectors = MasterCardModuleService.QuerySectors(conn).ToList(),
+                        sectors = MasterCardModuleService.QuerySectors(conn, authorizedSectorIds).ToList(),
                         equipments = MasterCardModuleService.QueryEquipments(conn).ToList(),
-                        operators = MasterCardModuleService.QueryOperators(conn).ToList(),
-                        trainers = MasterCardModuleService.QueryTrainers(conn).ToList()
+                        operators = MasterCardModuleService.QueryOperators(conn, authorizedSectorIds).ToList(),
+                        trainers = MasterCardModuleService.QueryTrainers(conn, authorizedSectorIds).ToList()
                     },
                     defaults = new
                     {
                         dtInicial = filter.Start.ToString("yyyy-MM-dd"),
                         dtFinal = filter.End.ToString("yyyy-MM-dd"),
-                        sectorId = 0,
+                        sectorId = filter.SectorId,
                         equipmentId = 0,
                         status = "",
                         operatorCodigoFJ = "",
@@ -109,10 +124,18 @@ namespace TeamOps.UI.Forms
 
         private void SendRows(MasterCardModuleService.MasterCardReportFilter filter)
         {
+            _authorization.DemandSectorOrAggregate(
+                _currentUser.Id,
+                ModuleCodes.MasterCard,
+                PermissionActions.View,
+                filter.SectorId);
+            var authorizedSectorIds = _authorization.GetContext(_currentUser.Id).AuthorizedSectorIds;
             using var conn = _factory.CreateOpenConnection();
             MasterCardModuleService.EnsureSchema(conn);
 
-            var rows = MasterCardModuleService.QueryReportRows(conn, filter);
+            var rows = MasterCardModuleService.QueryReportRows(conn, filter)
+                .Where(item => authorizedSectorIds.Contains(item.SectorId))
+                .ToList();
 
             PostJson(new
             {
@@ -147,6 +170,7 @@ namespace TeamOps.UI.Forms
 
             if (row == null)
                 throw new InvalidOperationException(L("MasterCard nao encontrado.", "MasterCard が見つかりません。"));
+            _authorization.Demand(_currentUser.Id, ModuleCodes.MasterCard, PermissionActions.View, row.SectorId);
 
             PostJson(new
             {

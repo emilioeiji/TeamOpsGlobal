@@ -81,7 +81,7 @@ namespace TeamOps.UI.Services
             });
         }
 
-        internal static IEnumerable<object> QueryOperators(IDbConnection conn)
+        internal static IEnumerable<object> QueryOperators(IDbConnection conn, IReadOnlyCollection<int>? authorizedSectorIds = null)
         {
             const string sql = @"
                 SELECT
@@ -94,7 +94,9 @@ namespace TeamOps.UI.Services
                 WHERE Status = 1
                 ORDER BY NameRomanji, CodigoFJ;";
 
-            return conn.Query<LookupRow>(sql).Select(item => new
+            return conn.Query<LookupRow>(sql)
+                .Where(item => authorizedSectorIds == null || authorizedSectorIds.Contains(item.SectorId))
+                .Select(item => new
             {
                 codigoFJ = item.CodigoFJ,
                 namePt = item.NamePt,
@@ -104,7 +106,7 @@ namespace TeamOps.UI.Services
             });
         }
 
-        internal static IEnumerable<object> QueryTrainers(IDbConnection conn)
+        internal static IEnumerable<object> QueryTrainers(IDbConnection conn, IReadOnlyCollection<int>? authorizedSectorIds = null)
         {
             const string sql = @"
                 SELECT
@@ -118,7 +120,9 @@ namespace TeamOps.UI.Services
                   AND Trainer = 1
                 ORDER BY NameRomanji, CodigoFJ;";
 
-            return conn.Query<LookupRow>(sql).Select(item => new
+            return conn.Query<LookupRow>(sql)
+                .Where(item => authorizedSectorIds == null || authorizedSectorIds.Contains(item.SectorId))
+                .Select(item => new
             {
                 codigoFJ = item.CodigoFJ,
                 namePt = item.NamePt,
@@ -128,7 +132,7 @@ namespace TeamOps.UI.Services
             });
         }
 
-        internal static IEnumerable<object> QuerySectors(IDbConnection conn)
+        internal static IEnumerable<object> QuerySectors(IDbConnection conn, IReadOnlyCollection<int>? authorizedSectorIds = null)
         {
             const string sql = @"
                 SELECT
@@ -138,7 +142,9 @@ namespace TeamOps.UI.Services
                 FROM Sectors
                 ORDER BY Id;";
 
-            return conn.Query<SectorLookupRow>(sql).Select(item => new
+            return conn.Query<SectorLookupRow>(sql)
+                .Where(item => authorizedSectorIds == null || authorizedSectorIds.Contains(item.Id))
+                .Select(item => new
             {
                 id = item.Id,
                 namePt = item.NamePt,
@@ -164,7 +170,7 @@ namespace TeamOps.UI.Services
             });
         }
 
-        internal static List<MasterCardRow> QueryMasterCards(IDbConnection conn)
+        internal static List<MasterCardRow> QueryMasterCards(IDbConnection conn, IReadOnlyCollection<int>? authorizedSectorIds = null)
         {
             const string sql = @"
                 SELECT
@@ -213,7 +219,9 @@ namespace TeamOps.UI.Services
                     date(m.StartDate) DESC,
                     m.Id DESC;";
 
-            return conn.Query<MasterCardRow>(sql).ToList();
+            return conn.Query<MasterCardRow>(sql)
+                .Where(item => authorizedSectorIds == null || authorizedSectorIds.Contains(item.SectorId))
+                .ToList();
         }
 
         internal static MasterCardRow? GetMasterCard(IDbConnection conn, int id)
@@ -600,8 +608,9 @@ namespace TeamOps.UI.Services
                     SELECT COUNT(1)
                     FROM Operators
                     WHERE CodigoFJ = @codigoFJ
-                      AND Status = 1;",
-                new { codigoFJ = input.OperatorCodigoFJ }
+                      AND Status = 1
+                      AND SectorId = @sectorId;",
+                new { codigoFJ = input.OperatorCodigoFJ, sectorId = input.SectorId }
             ) > 0;
 
             if (!operatorExists)
@@ -613,8 +622,9 @@ namespace TeamOps.UI.Services
                     FROM Operators
                     WHERE CodigoFJ = @codigoFJ
                       AND Status = 1
-                      AND Trainer = 1;",
-                new { codigoFJ = input.TrainerCodigoFJ }
+                      AND Trainer = 1
+                      AND SectorId = @sectorId;",
+                new { codigoFJ = input.TrainerCodigoFJ, sectorId = input.SectorId }
             ) > 0;
 
             if (!trainerExists)

@@ -5,7 +5,9 @@ const state = {
     sectors: [],
     equipments: [],
     operators: [],
-    trainers: []
+    trainers: [],
+    allowAggregate: false,
+    defaultSectorId: 0
 };
 
 const I18N = {
@@ -173,6 +175,8 @@ window.chrome.webview.addEventListener("message", event => {
 
 function hydrateInit(data) {
     state.locale = data.locale === "ja-JP" ? "ja-JP" : "pt-BR";
+    state.allowAggregate = data.allowAggregate === true;
+    state.defaultSectorId = Number(data.defaults?.sectorId || 0);
     state.statuses = normalizeStatuses(data.filters?.statuses || []);
     state.sectors = normalizeLookup(data.filters?.sectors || []);
     state.equipments = normalizeLookup(data.filters?.equipments || []);
@@ -181,14 +185,14 @@ function hydrateInit(data) {
 
     applyLocale();
     fillSelect("cmbStatus", state.statuses, "value", statusFieldName(), true);
-    fillSelect("cmbSector", state.sectors, "id", fieldName(), true);
+    fillSelect("cmbSector", state.sectors, "id", fieldName(), state.allowAggregate);
     fillSelect("cmbEquipment", state.equipments, "id", fieldName(), true);
     fillSelect("cmbOperator", state.operators, "codigoFJ", fieldName(), true);
     fillSelect("cmbTrainer", state.trainers, "codigoFJ", fieldName(), true);
 
     document.getElementById("dtInicial").value = data.defaults?.dtInicial || "";
     document.getElementById("dtFinal").value = data.defaults?.dtFinal || "";
-    document.getElementById("cmbSector").value = String(data.defaults?.sectorId || 0);
+    document.getElementById("cmbSector").value = String(state.defaultSectorId);
     document.getElementById("cmbEquipment").value = String(data.defaults?.equipmentId || 0);
     document.getElementById("cmbStatus").value = data.defaults?.status || "";
     document.getElementById("cmbOperator").value = data.defaults?.operatorCodigoFJ || "";
@@ -248,7 +252,7 @@ function applyFilters() {
 }
 
 function clearFilters() {
-    document.getElementById("cmbSector").value = "0";
+    document.getElementById("cmbSector").value = String(state.defaultSectorId);
     document.getElementById("cmbEquipment").value = "0";
     document.getElementById("cmbStatus").value = "";
     document.getElementById("cmbOperator").value = "";

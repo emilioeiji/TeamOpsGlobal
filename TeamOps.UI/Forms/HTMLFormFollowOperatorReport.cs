@@ -6,7 +6,10 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using TeamOps.Core.Entities;
+using TeamOps.Core.Security;
 using TeamOps.Data.Repositories;
+using TeamOps.Data.Security;
 
 namespace TeamOps.UI.Forms
 {
@@ -15,6 +18,8 @@ namespace TeamOps.UI.Forms
         private readonly string _codigoFJ;
         private readonly FollowUpRepository _followRepo;
         private readonly OperatorRepository _opRepo;
+        private readonly User _currentUser;
+        private readonly AuthorizationService _authorization;
 
         public HTMLFormFollowOperatorReport(
             string codigoFJ,
@@ -34,6 +39,8 @@ namespace TeamOps.UI.Forms
             _codigoFJ = codigoFJ;
             _followRepo = followRepo;
             _opRepo = opRepo;
+            _currentUser = Program.CurrentUser ?? throw new InvalidOperationException("Usuario nao autenticado.");
+            _authorization = new AuthorizationService(Program.ConnectionFactory);
 
             InitializeWebView();
         }
@@ -105,7 +112,11 @@ namespace TeamOps.UI.Forms
                 return;
             }
 
-            var list = _followRepo.GetByOperatorWithJoins(_codigoFJ);
+            _authorization.Demand(_currentUser.Id, ModuleCodes.FollowUp, PermissionActions.View);
+            var authorizedSectorIds = _authorization.GetContext(_currentUser.Id).AuthorizedSectorIds;
+            var list = _followRepo.GetByOperatorWithJoins(_codigoFJ)
+                .Where(item => authorizedSectorIds.Contains(item.SectorId))
+                .ToList();
             var lastDate = list.Count == 0 ? "-" : list.Max(x => x.Date).ToString("yyyy/MM/dd HH:mm");
 
             PostJson(new
@@ -153,6 +164,8 @@ namespace TeamOps.UI.Forms
 
         private async Task SavePdfAsync()
         {
+            _authorization.Demand(_currentUser.Id, ModuleCodes.FollowUp, PermissionActions.Export);
+
             if (webViewFollowOperator.CoreWebView2 == null)
                 return;
 
