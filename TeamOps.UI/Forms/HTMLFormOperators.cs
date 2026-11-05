@@ -7,8 +7,10 @@ using System.Linq;
 using System.Text.Json;
 using System.Windows.Forms;
 using TeamOps.Core.Entities;
+using TeamOps.Core.Security;
 using TeamOps.Data.Db;
 using TeamOps.Data.Repositories;
+using TeamOps.Data.Security;
 using TeamOps.UI.Forms.Models;
 
 namespace TeamOps.UI.Forms
@@ -20,6 +22,9 @@ namespace TeamOps.UI.Forms
         private readonly ShiftRepository _shiftRepo;
         private readonly GroupRepository _groupRepo;
         private readonly SectorRepository _sectorRepo;
+        private readonly User _currentUser;
+        private readonly AuthorizationService _authorization;
+        private readonly SessionValidationService _sessionValidation;
 
         public HTMLFormOperators()
         {
@@ -27,6 +32,11 @@ namespace TeamOps.UI.Forms
             Text = L("Cadastro de operadores", "\u4f5c\u696d\u8005\u767b\u9332");
 
             _factory = Program.ConnectionFactory;
+            _currentUser = Program.CurrentUser
+                ?? throw new UnauthorizedAccessException("Sessao de usuario indisponivel.");
+            _authorization = new AuthorizationService(_factory);
+            _sessionValidation = new SessionValidationService(_factory);
+            Demand(PermissionActions.View);
             _opRepo = new OperatorRepository(_factory);
             _shiftRepo = new ShiftRepository(_factory);
             _groupRepo = new GroupRepository(_factory);
@@ -62,24 +72,41 @@ namespace TeamOps.UI.Forms
             var msg = JsonSerializer.Deserialize<JsRequest>(e.WebMessageAsJson);
             if (msg == null) return;
 
-            switch (msg.action)
+            try
             {
-                case "load":
-                    LoadInitialData();
-                    break;
+                switch (msg.action)
+                {
+                    case "load":
+                        Demand(PermissionActions.View);
+                        LoadInitialData();
+                        break;
 
-                case "save":
-                    SaveOperator(msg);
-                    break;
+                    case "save":
+                        Demand(PermissionActions.Create);
+                        SaveOperator(msg);
+                        break;
 
-                case "update":
-                    UpdateOperator(msg);
-                    break;
+                    case "update":
+                        Demand(PermissionActions.Edit);
+                        UpdateOperator(msg);
+                        break;
 
-                case "delete":
-                    DeleteOperator(msg);
-                    break;
+                    case "delete":
+                        Demand(PermissionActions.Delete);
+                        DeleteOperator(msg);
+                        break;
+                }
             }
+            catch (Exception ex)
+            {
+                PostJson(new { type = "error", message = ex.Message });
+            }
+        }
+
+        private void Demand(string action)
+        {
+            _sessionValidation.DemandCurrent(_currentUser);
+            _authorization.Demand(_currentUser.Id, ModuleCodes.Organization, action);
         }
 
         private void LoadInitialData()

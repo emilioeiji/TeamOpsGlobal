@@ -106,7 +106,7 @@ namespace TeamOps.UI.Forms
 
             if (!_hasOperationalIdentity
                 && action.StartsWith("open:", StringComparison.OrdinalIgnoreCase)
-                && action is not "open:admin" and not "open:accesscontrol")
+                && !CanOpenWithoutOperationalIdentity(action))
             {
                 MessageBox.Show(
                     "Cadastre e associe um codigo FJ antes de acessar modulos operacionais.",
@@ -139,7 +139,10 @@ namespace TeamOps.UI.Forms
                     break;
 
                 case "open:operadores":
-                    OpenDialog(() => new HTMLFormOperators());
+                    if (!_authorization.IsAllowed(_user.Id, ModuleCodes.Organization, PermissionActions.View))
+                        ShowAccessDeniedAsync();
+                    else
+                        OpenDialog(() => new HTMLFormOperators());
                     break;
 
                 case "open:atribuir":
@@ -474,6 +477,15 @@ namespace TeamOps.UI.Forms
         private bool HasAccess(AccessLevel level)
         {
             return _user.AccessLevel >= level;
+        }
+
+        private bool CanOpenWithoutOperationalIdentity(string action)
+        {
+            if (action is "open:admin" or "open:accesscontrol")
+                return true;
+
+            return action == "open:operadores"
+                && _authorization.IsAllowed(_user.Id, ModuleCodes.Organization, PermissionActions.View);
         }
 
         private void ShowAccessDenied()

@@ -37,10 +37,16 @@ public sealed class AuthenticationTests
             .Authenticate("initial.director", StrongPassword, "TEST-PC");
         Assert.True(authenticated.Succeeded);
         Assert.Equal(userId, authenticated.User!.Id);
+        Assert.Null(authenticated.User.CodigoFJ);
 
-        var scope = new AuthorizationService(context.Factory).GetContext(userId);
+        var authorization = new AuthorizationService(context.Factory);
+        var scope = authorization.GetContext(userId);
         Assert.Equal("DIRECTOR", scope.ProfileCode);
         Assert.Equal(4, scope.AuthorizedSectorIds.Count);
+        Assert.True(authorization.IsAllowed(
+            userId, ModuleCodes.Organization, PermissionActions.View));
+        Assert.True(authorization.IsAllowed(
+            userId, ModuleCodes.Organization, PermissionActions.Create));
     }
 
     [Fact]
