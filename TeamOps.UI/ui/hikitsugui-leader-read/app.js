@@ -1,4 +1,4 @@
-let currentUserAccessLevel = 0;
+let currentUserHierarchyRank = 0;
 let editExistingAttachments = [];
 let editNewAttachments = [];
 let currentEditId = null;
@@ -201,7 +201,8 @@ window.addEventListener("DOMContentLoaded", () => {
     document.getElementById("btnBuscar").addEventListener("click", () => {
         const publico = document.querySelector("input[name='publico']:checked").value;
 
-        if (publico === "masv" && currentUserAccessLevel < 3) {
+        if ((publico === "lider" && currentUserHierarchyRank < 2)
+            || (publico === "masv" && currentUserHierarchyRank < 3)) {
             alert(t("noAccessMasv"));
             return;
         }
@@ -271,7 +272,7 @@ window.chrome.webview.addEventListener("message", e => {
     switch (msg.type) {
         case "filters":
             currentLocale = msg.locale === "ja-JP" ? "ja-JP" : "pt-BR";
-            currentUserAccessLevel = msg.accessLevel;
+            currentUserHierarchyRank = Number(msg.hierarchyRank || 0);
             applyLocale();
             fillFilters(msg);
             applyAccessRules();
@@ -369,9 +370,14 @@ function applyLocale() {
 }
 
 function applyAccessRules() {
+    const leaderOption = document.querySelector("input[value='lider']")?.parentElement;
     const masvOption = document.querySelector("input[value='masv']")?.parentElement;
 
-    if (currentUserAccessLevel < 3 && masvOption) {
+    if (currentUserHierarchyRank < 2 && leaderOption) {
+        leaderOption.style.display = "none";
+    }
+
+    if (currentUserHierarchyRank < 3 && masvOption) {
         masvOption.style.display = "none";
     }
 }
@@ -598,7 +604,8 @@ function currentFiltersPayload(idOverride = null) {
 function markRead(id) {
     const publico = document.querySelector("input[name='publico']:checked").value;
 
-    if (publico === "masv" && currentUserAccessLevel < 3) {
+    if ((publico === "lider" && currentUserHierarchyRank < 2)
+        || (publico === "masv" && currentUserHierarchyRank < 3)) {
         alert(t("noAccessMasv"));
         return;
     }

@@ -144,11 +144,9 @@ namespace TeamOps.UI.Services
                         o.GroupId,
                         COALESCE(NULLIF(g.NamePt, ''), NULLIF(g.NameJp, ''), 'Grupo ' || o.GroupId) AS GroupName,
                         COALESCE(o.Trainer, 0) AS Trainer,
-                        COALESCE(o.IsLeader, 0) AS IsLeader,
-                        COALESCE(u.AccessLevel, CASE WHEN COALESCE(o.IsLeader, 0) = 1 THEN 3 ELSE 1 END) AS AccessLevel
+                        COALESCE(o.IsLeader, 0) AS IsLeader
                     FROM Operators o
                     LEFT JOIN Groups g ON g.Id = o.GroupId
-                    LEFT JOIN Users u ON u.CodigoFJ = o.CodigoFJ
                     WHERE COALESCE(o.Status, 1) = 1
                     ORDER BY o.GroupId, o.NameRomanji, o.CodigoFJ;")
                 .ToList();
@@ -202,10 +200,11 @@ namespace TeamOps.UI.Services
                         COALESCE(NULLIF(g.NamePt, ''), NULLIF(g.NameJp, ''), 'Grupo ' || o.GroupId) AS GroupName,
                         COALESCE(o.Trainer, 0) AS Trainer,
                         COALESCE(o.IsLeader, 0) AS IsLeader,
-                        COALESCE(u.AccessLevel, CASE WHEN COALESCE(o.IsLeader, 0) = 1 THEN 3 ELSE 1 END) AS AccessLevel
+                        COALESCE(p.Code, CASE WHEN COALESCE(o.IsLeader, 0) = 1 THEN 'GL' ELSE 'OP' END) AS ProfileCode
                     FROM Operators o
                     LEFT JOIN Groups g ON g.Id = o.GroupId
                     LEFT JOIN Users u ON u.CodigoFJ = o.CodigoFJ
+                    LEFT JOIN AccessProfiles p ON p.Id = u.ProfileId AND p.IsActive = 1
                     WHERE COALESCE(o.Status, 1) = 1
                       AND o.ShiftId = @ShiftId
                       AND (
@@ -808,10 +807,11 @@ namespace TeamOps.UI.Services
                         COALESCE(NULLIF(g.NamePt, ''), NULLIF(g.NameJp, ''), 'Grupo ' || o.GroupId) AS GroupName,
                         COALESCE(o.Trainer, 0) AS Trainer,
                         COALESCE(o.IsLeader, 0) AS IsLeader,
-                        COALESCE(u.AccessLevel, CASE WHEN COALESCE(o.IsLeader, 0) = 1 THEN 3 ELSE 1 END) AS AccessLevel
+                        COALESCE(p.Code, CASE WHEN COALESCE(o.IsLeader, 0) = 1 THEN 'GL' ELSE 'OP' END) AS ProfileCode
                     FROM Operators o
                     LEFT JOIN Groups g ON g.Id = o.GroupId
                     LEFT JOIN Users u ON u.CodigoFJ = o.CodigoFJ
+                    LEFT JOIN AccessProfiles p ON p.Id = u.ProfileId AND p.IsActive = 1
                     WHERE COALESCE(o.Status, 1) = 1
                       AND o.ShiftId = @ShiftId
                       AND (
@@ -981,7 +981,7 @@ namespace TeamOps.UI.Services
                         op.GroupName,
                         op.Trainer,
                         op.IsLeader,
-                        op.AccessLevel,
+                        op.ProfileCode,
                         local?.Id,
                         local?.Name ?? string.Empty,
                         local?.ShortCode ?? string.Empty,
@@ -2771,7 +2771,7 @@ namespace TeamOps.UI.Services
 
             var tvPresentLeaders = rows
                 .Where(IsPresentLeader)
-                .OrderBy(row => row.AccessLevel == 2 ? 0 : 1)
+                .OrderBy(LeaderSortRank)
                 .ThenBy(row => row.GroupName, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(row => row.Name, StringComparer.OrdinalIgnoreCase)
                 .ToList();
@@ -3591,7 +3591,22 @@ namespace TeamOps.UI.Services
 
         private static string LeaderRole(HaidaiBoardRow row)
         {
-            return row.AccessLevel == 2 ? "KL" : "GL";
+            return string.IsNullOrWhiteSpace(row.ProfileCode)
+                ? "GL"
+                : row.ProfileCode.Trim().ToUpperInvariant();
+        }
+
+        private static int LeaderSortRank(HaidaiBoardRow row)
+        {
+            return LeaderRole(row) switch
+            {
+                "KL" => 0,
+                "GL" => 1,
+                "SV" => 2,
+                "MANAGER" => 3,
+                "DIRECTOR" => 4,
+                _ => 5
+            };
         }
 
         private static string AreaSortKey(string area)
@@ -4034,7 +4049,7 @@ namespace TeamOps.UI.Services
         string GroupName,
         bool Trainer,
         bool IsLeader,
-        int AccessLevel,
+        string ProfileCode,
         int? LocalId,
         string LocalName,
         string LocalShortCode,
@@ -4126,7 +4141,7 @@ namespace TeamOps.UI.Services
         public string GroupName { get; set; } = string.Empty;
         public bool Trainer { get; set; }
         public bool IsLeader { get; set; }
-        public int AccessLevel { get; set; }
+        public string ProfileCode { get; set; } = string.Empty;
     }
 
     internal sealed class HaidaiOperatorSectorRow

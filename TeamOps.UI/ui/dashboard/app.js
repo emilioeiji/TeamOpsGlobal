@@ -265,7 +265,7 @@ function hydrateDashboard(payload) {
     renderPendingModal(payload);
     renderSectorContext();
 
-    const level = Number(payload.accessLevel ?? 0);
+    const level = Number(payload.hierarchyRank ?? 0);
     const label = payload.profileCode || ACCESS_LABELS[state.locale]?.[level] || `Nivel ${level}`;
     const profilePrefix = I18N[state.locale]?.profilePrefix || "Perfil";
 
@@ -419,7 +419,7 @@ function setLocale(locale) {
     renderSectorContext();
         setText("lblDate", formatDashboardDate(state.payload.dateIso, state.locale));
 
-        const level = Number(state.payload.accessLevel ?? 0);
+        const level = Number(state.payload.hierarchyRank ?? 0);
         const label = state.payload.profileCode || ACCESS_LABELS[state.locale]?.[level] || `Nivel ${level}`;
         setText("lblAccessLevel", label);
         setText("accessBadge", `${strings.profilePrefix} ${label}`);

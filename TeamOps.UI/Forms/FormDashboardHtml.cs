@@ -318,7 +318,7 @@ namespace TeamOps.UI.Forms
                 operatorNameJp = string.IsNullOrWhiteSpace(_currentOperator.NameNihongo)
                     ? _currentOperator.NameRomanji
                     : _currentOperator.NameNihongo,
-                accessLevel = (int)_user.AccessLevel,
+                hierarchyRank = Program.CurrentSession?.Access.HierarchyRank ?? 0,
                 shiftNamePt = _currentShift.NamePt,
                 shiftNameJp = string.IsNullOrWhiteSpace(_currentShift.NameJp)
                     ? _currentShift.NamePt
@@ -333,7 +333,7 @@ namespace TeamOps.UI.Forms
                     masterCards = GetPendingMasterCardItems()
                 },
                 permissions = GetDashboardPermissions(),
-                profileCode = Program.CurrentSession?.Access.ProfileCode ?? _user.AccessLevel.ToString(),
+                profileCode = Program.CurrentSession?.Access.ProfileCode ?? string.Empty,
                 selectedSectorId = Program.CurrentSession?.SelectedSectorId,
                 canUseAggregateScope = Program.CurrentSession?.CanUseAggregateScope ?? false,
                 sectors = Program.CurrentSession?.Sectors.Select(sector => new

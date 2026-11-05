@@ -1,11 +1,9 @@
 ﻿using Microsoft.Data.Sqlite;
 using System;
 using System.Collections.Generic;
-using TeamOps.Core.Common;
 using TeamOps.Core.Entities;
 using TeamOps.Data.Db;
 using TeamOps.Data.Security;
-using static Dapper.SqlMapper;
 
 namespace TeamOps.Data.Repositories
 {
@@ -183,83 +181,6 @@ namespace TeamOps.Data.Repositories
                     Description = reader.GetString(10),
                     AttachmentPath = reader.IsDBNull(11) ? null : reader.GetString(11),
                     ForMaSv = reader.GetInt32(12) == 1
-                });
-            }
-
-            return list;
-        }
-
-        // ---------------------------------------------------------
-        // GET FOR LEADER (Filtro por data + ForLeaders/ForOperators)
-        // ---------------------------------------------------------
-        public List<Hikitsugui> GetForLeader(DateTime start, DateTime end, AccessLevel level)
-        {
-            var list = new List<Hikitsugui>();
-
-            using var conn = _factory.CreateOpenConnection();
-            using var cmd = conn.CreateCommand();
-
-            // 🔹 Monta o filtro conforme o nível de acesso
-            string filtroPermissao = level >= AccessLevel.GL
-                ? "(h.ForLeaders = 1 OR h.ForOperators = 1 OR h.ForMaSv = 1)"
-                : "(h.ForLeaders = 1 OR h.ForOperators = 1)";
-
-            cmd.CommandText = $@"
-                SELECT 
-                    h.Id,
-                    h.Date,
-                    h.ShiftId,
-                    o.NameRomanji AS CreatorCodigoFJ,
-                    h.CategoryId,
-                    h.EquipmentId,
-                    h.LocalId,
-                    h.SectorId,
-                    h.ForLeaders,
-                    h.ForOperators,
-                    h.ForMaSv,
-                    h.Description,
-                    h.AttachmentPath,
-                    c.NamePt AS CategoryName,
-                    s.NamePt AS SectorName,
-                    l.NamePt AS LocalName
-                FROM Hikitsugui h
-                LEFT JOIN Categories c ON c.Id = h.CategoryId
-                LEFT JOIN Sectors s ON s.Id = h.SectorId
-                LEFT JOIN Operators o ON o.CodigoFJ = h.CreatorCodigoFJ
-                LEFT JOIN Locals l ON l.Id = h.LocalId
-                WHERE h.Date >= @start
-                  AND h.Date <  @end
-                  AND {filtroPermissao}
-                ORDER BY h.Date DESC
-                ";
-
-            cmd.Parameters.AddWithValue("@start", start);
-            cmd.Parameters.AddWithValue("@end", end);
-
-            using var reader = cmd.ExecuteReader();
-            while (reader.Read())
-            {
-                list.Add(new Hikitsugui
-                {
-                    Id = reader.GetInt32(0),
-                    Date = reader.GetDateTime(1),
-                    ShiftId = reader.GetInt32(2),
-                    CreatorCodigoFJ = reader.GetString(3),
-                    CategoryId = reader.GetInt32(4),
-                    EquipmentId = reader.IsDBNull(5) ? null : reader.GetInt32(5),
-                    LocalId = reader.IsDBNull(6) ? null : reader.GetInt32(6),
-                    SectorId = reader.IsDBNull(7) ? null : reader.GetInt32(7),
-
-                    ForLeaders = reader.GetInt32(8) == 1,
-                    ForOperators = reader.GetInt32(9) == 1,
-                    ForMaSv = reader.GetInt32(10) == 1,
-
-                    Description = reader.GetString(11),
-                    AttachmentPath = reader.IsDBNull(12) ? null : reader.GetString(12),
-
-                    CategoryName = reader.IsDBNull(13) ? "" : reader.GetString(13),
-                    SectorName = reader.IsDBNull(14) ? "" : reader.GetString(14),
-                    LocalName = reader.IsDBNull(15) ? "" : reader.GetString(15)
                 });
             }
 

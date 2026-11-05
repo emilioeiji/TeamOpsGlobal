@@ -17,9 +17,10 @@ namespace TeamOps.UI.Forms
     public partial class HTMLHikitsuguiLeaderRead : Form
     {
         private readonly SqliteConnectionFactory _factory;
-        private readonly User _currentUser;          // ← TEM ACCESS LEVEL
-        private readonly Operator _currentLeader;    // ← TEM CODIGOFJ
+        private readonly User _currentUser;
+        private readonly Operator _currentLeader;
         private readonly HikitsuguiAudienceService _audienceService;
+        private readonly int _hierarchyRank;
         private int? _authorizedPreviewId;
 
         public HTMLHikitsuguiLeaderRead(
@@ -33,6 +34,7 @@ namespace TeamOps.UI.Forms
             _currentUser = currentUser;
             _currentLeader = currentLeader;
             _audienceService = new HikitsuguiAudienceService(factory);
+            _hierarchyRank = new AuthorizationService(factory).GetContext(currentUser.Id).HierarchyRank;
 
             InitializeWebView();
         }
@@ -162,7 +164,7 @@ namespace TeamOps.UI.Forms
                             sectors,
                             dtInicial,
                             dtFinal,
-                            accessLevel = _currentUser.AccessLevel
+                            hierarchyRank = _hierarchyRank
                         });
 
                         webViewHikitsugui.CoreWebView2.PostWebMessageAsJson(jsonFilters);
@@ -632,6 +634,8 @@ namespace TeamOps.UI.Forms
             int sectorId,
             string search)
         {
+            HikitsuguiAudienceTierPolicy.DemandCanFilter(_hierarchyRank, publico);
+
             const string sql = @"
                 SELECT DISTINCT
                     h.Id,
@@ -667,14 +671,14 @@ namespace TeamOps.UI.Forms
                   AND h.Date BETWEEN @dtInicial AND @dtFinal
                   AND (
                         (@publico = 'operador' AND h.ForOperators = 1)
-                        OR (@publico = 'lider' AND h.ForLeaders = 1)
-                        OR (@publico = 'masv' AND h.ForMaSv = 1)
+                        OR (@publico = 'lider' AND @hierarchyRank >= 2 AND h.ForLeaders = 1)
+                        OR (@publico = 'masv' AND @hierarchyRank >= 3 AND h.ForMaSv = 1)
                         OR (
                             @publico = 'todos'
                             AND (
-                                (@accessLevel = 1 AND h.ForOperators = 1)
-                                OR (@accessLevel = 2 AND (h.ForOperators = 1 OR h.ForLeaders = 1))
-                                OR (@accessLevel >= 3 AND (h.ForOperators = 1 OR h.ForLeaders = 1 OR h.ForMaSv = 1))
+                                (@hierarchyRank = 1 AND h.ForOperators = 1)
+                                OR (@hierarchyRank = 2 AND (h.ForOperators = 1 OR h.ForLeaders = 1))
+                                OR (@hierarchyRank >= 3 AND (h.ForOperators = 1 OR h.ForLeaders = 1 OR h.ForMaSv = 1))
                             )
                         )
                     )
@@ -715,7 +719,7 @@ namespace TeamOps.UI.Forms
                 sectorId,
                 codigoFJ = _currentLeader.CodigoFJ,
                 search,
-                accessLevel = _currentUser.AccessLevel
+                hierarchyRank = _hierarchyRank
             }).Where(row => visibleIds.Contains((int)row.Id))
               .Where(row => sectorId == 0 || _audienceService.IsTargetedToSector((int)row.Id, sectorId))
               .Select(row => new

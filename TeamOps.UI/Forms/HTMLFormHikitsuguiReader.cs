@@ -7,7 +7,6 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Windows.Forms;
-using TeamOps.Core.Common;
 using TeamOps.Core.Entities;
 using TeamOps.Data.Db;
 using TeamOps.Data.Security;
@@ -21,6 +20,7 @@ namespace TeamOps.UI.Forms
         private readonly User _currentUser;
         private readonly Operator _currentOperator;
         private readonly HikitsuguiAudienceService _audienceService;
+        private readonly int _hierarchyRank;
         private int? _authorizedPreviewId;
 
         public HTMLFormHikitsuguiReader(
@@ -36,6 +36,7 @@ namespace TeamOps.UI.Forms
             _currentUser = currentUser;
             _currentOperator = currentOperator;
             _audienceService = new HikitsuguiAudienceService(factory);
+            _hierarchyRank = new AuthorizationService(factory).GetContext(currentUser.Id).HierarchyRank;
 
             InitializeWebView();
         }
@@ -68,29 +69,36 @@ namespace TeamOps.UI.Forms
             if (msg == null)
                 return;
 
-            switch (msg.action)
+            try
             {
-                case "load":
-                    LoadInitialData();
-                    break;
+                switch (msg.action)
+                {
+                    case "load":
+                        LoadInitialData();
+                        break;
 
-                case "filter":
-                    SendMatrix(
-                        ParseDateOrFallback(msg.dtInicial, DateTime.Today.AddMonths(-1)),
-                        ParseDateOrFallback(msg.dtFinal, DateTime.Today),
-                        NormalizeAudience(msg.publico),
-                        msg.shiftId,
-                        msg.sectorId
-                    );
-                    break;
+                    case "filter":
+                        SendMatrix(
+                            ParseDateOrFallback(msg.dtInicial, DateTime.Today.AddMonths(-1)),
+                            ParseDateOrFallback(msg.dtFinal, DateTime.Today),
+                            NormalizeAudience(msg.publico),
+                            msg.shiftId,
+                            msg.sectorId
+                        );
+                        break;
 
-                case "preview":
-                    SendPreview(msg.id);
-                    break;
+                    case "preview":
+                        SendPreview(msg.id);
+                        break;
 
-                case "open_attachment":
-                    OpenAttachment(msg.id, msg.path);
-                    break;
+                    case "open_attachment":
+                        OpenAttachment(msg.id, msg.path);
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                SendError(ex.Message);
             }
         }
 
@@ -142,6 +150,7 @@ namespace TeamOps.UI.Forms
 
         private void SendMatrix(DateTime start, DateTime end, string audience, int shiftId, int sectorId)
         {
+            HikitsuguiAudienceTierPolicy.DemandCanFilter(_hierarchyRank, audience);
             using var conn = _factory.CreateOpenConnection();
 
             var members = QueryMembers(conn, audience, shiftId, sectorId).ToList();
@@ -196,9 +205,10 @@ namespace TeamOps.UI.Forms
                     o.SectorId,
                     COALESCE(o.GroupId, 0) AS GroupId,
                     o.IsLeader,
-                    COALESCE(u.AccessLevel, 0) AS AccessLevel
+                    COALESCE(p.HierarchyRank, CASE WHEN COALESCE(o.IsLeader, 0) = 1 THEN 3 ELSE 1 END) AS HierarchyRank
                 FROM Operators o
                 LEFT JOIN Users u ON u.CodigoFJ = o.CodigoFJ
+                LEFT JOIN AccessProfiles p ON p.Id = u.ProfileId AND p.IsActive = 1
                 WHERE o.Status = 1
                 ORDER BY NameRomanji;";
 
@@ -210,7 +220,7 @@ namespace TeamOps.UI.Forms
             rows = audience switch
             {
                 "leaders" => rows.Where(row => row.IsLeader).ToList(),
-                "masv" => rows.Where(row => row.AccessLevel >= (int)AccessLevel.GL).ToList(),
+                "masv" => rows.Where(row => row.HierarchyRank >= 3).ToList(),
                 _ => rows.Where(row => !row.IsLeader).ToList()
             };
 
@@ -482,7 +492,7 @@ namespace TeamOps.UI.Forms
             public int? SectorId { get; set; }
             public int GroupId { get; set; }
             public bool IsLeader { get; set; }
-            public int AccessLevel { get; set; }
+            public int HierarchyRank { get; set; }
         }
 
         private sealed class HikitsuguiRow

@@ -87,7 +87,6 @@
         // ============================
         public string login { get; set; } = string.Empty;
         public string name { get; set; } = string.Empty;
-        public int accessLevel { get; set; }
         public string password { get; set; } = string.Empty;
         public string confirmPassword { get; set; } = string.Empty;
         public int userId { get; set; }
