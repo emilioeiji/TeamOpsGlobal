@@ -69,11 +69,20 @@ public sealed class UserAdministrationTests
             new UserAdministrationSaveRequest("operator.001", "FJ-OP-001", "Operator Teste", "OP", unit.Id,
                 [GetSectorId(context, "IAS")], true), StrongPassword);
         var before = GetSessionVersion(context, userId);
+        var oldSession = new AuthenticationService(context.Factory)
+            .Authenticate("operator.001", StrongPassword).User!;
+        var sessionValidation = new SessionValidationService(context.Factory);
+        Assert.True(sessionValidation.IsCurrent(oldSession));
 
         Assert.Throws<ArgumentException>(() => service.ResetPassword(directorId, userId, "weak"));
         service.ResetPassword(directorId, userId, "Changed#2026!Secure");
 
         Assert.Equal(before + 1, GetSessionVersion(context, userId));
+        Assert.False(sessionValidation.IsCurrent(oldSession));
+        Assert.Throws<UnauthorizedAccessException>(() => sessionValidation.DemandCurrent(oldSession));
+        var newSession = new AuthenticationService(context.Factory)
+            .Authenticate("operator.001", "Changed#2026!Secure").User!;
+        Assert.True(sessionValidation.IsCurrent(newSession));
         using var conn = context.Factory.CreateOpenConnection();
         Assert.Equal(1, conn.ExecuteScalar<int>(
             "SELECT COUNT(*) FROM AuthenticationAudit WHERE UserId = @userId AND EventType = 'PasswordReset';",

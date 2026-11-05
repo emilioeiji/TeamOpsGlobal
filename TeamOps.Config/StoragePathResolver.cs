@@ -41,19 +41,60 @@ namespace TeamOps.Config
                 throw new InvalidOperationException(
                     $"Caminho relativo a unidade nao suportado: {expanded}. Use caminho absoluto local ou UNC.");
 
-            var candidate = Path.IsPathRooted(expanded)
+            if (IsMappedNetworkDrive(expanded))
+                throw new InvalidOperationException(
+                    $"Unidade de rede mapeada nao suportada: {expanded}. Configure o caminho UNC do compartilhamento.");
+
+            var configuredAsAbsolute = Path.IsPathRooted(expanded);
+            var candidate = configuredAsAbsolute
                 ? expanded
                 : Path.Combine(storageRoot, expanded);
             if (!Path.IsPathRooted(candidate))
                 candidate = Path.Combine(appBaseDirectory, candidate);
 
-            return Path.GetFullPath(candidate)
+            var resolved = Path.GetFullPath(candidate)
                 .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+            if (!configuredAsAbsolute)
+                DemandInsideStorageRoot(resolved, storageRoot);
+
+            return resolved;
         }
 
         public static bool IsUncPath(string path) =>
             !string.IsNullOrWhiteSpace(path)
             && path.StartsWith(@"\\", StringComparison.Ordinal);
+
+        public static bool IsMappedNetworkDrive(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path) || IsUncPath(path) || !Path.IsPathRooted(path))
+                return false;
+
+            try
+            {
+                var root = Path.GetPathRoot(path);
+                return !string.IsNullOrWhiteSpace(root)
+                    && new DriveInfo(root).DriveType == DriveType.Network;
+            }
+            catch (Exception) when (path.Length >= 2 && path[1] == ':')
+            {
+                return false;
+            }
+        }
+
+        private static void DemandInsideStorageRoot(string resolvedPath, string storageRoot)
+        {
+            var resolvedRoot = Path.GetFullPath(storageRoot)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var relative = Path.GetRelativePath(resolvedRoot, resolvedPath);
+            if (relative == ".."
+                || relative.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
+                || Path.IsPathRooted(relative))
+            {
+                throw new InvalidOperationException(
+                    $"O caminho relativo sai da raiz de armazenamento: {resolvedPath}.");
+            }
+        }
 
         private static bool LooksLikeDriveRelativePath(string path) =>
             path.Length >= 2

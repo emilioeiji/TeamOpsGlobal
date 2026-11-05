@@ -51,4 +51,28 @@ public sealed class StoragePathResolverTests
 
         Assert.Contains("Use caminho absoluto local ou UNC", exception.Message);
     }
+
+    [Fact]
+    public void ResolveCombinesRelativePathWithUncStorageRoot()
+    {
+        var result = StoragePathResolver.Resolve(
+            @"Anexo\Hikitsugui",
+            @"\\servidor\compartilhamento\TeamOps",
+            @"C:\TeamOps\App");
+
+        Assert.Equal(@"\\servidor\compartilhamento\TeamOps\Anexo\Hikitsugui", result);
+        Assert.True(StoragePathResolver.IsUncPath(result));
+    }
+
+    [Fact]
+    public void ResolveRejectsRelativePathOutsideStorageRoot()
+    {
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            StoragePathResolver.Resolve(
+                @"..\DB\teamops.db",
+                @"C:\TeamOps\Storage",
+                @"C:\TeamOps\App"));
+
+        Assert.Contains("sai da raiz de armazenamento", exception.Message);
+    }
 }

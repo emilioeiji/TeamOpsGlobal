@@ -27,6 +27,9 @@ namespace TeamOps.UI.Forms
         private readonly SqliteConnectionFactory _factory;
         private readonly bool _hasOperationalIdentity;
         private readonly AuthorizationService _authorization;
+        private readonly SessionValidationService _sessionValidation;
+        private readonly System.Windows.Forms.Timer _sessionValidationTimer;
+        private bool _sessionEnding;
 
         public FormDashboardHtml(User user)
         {
@@ -57,6 +60,11 @@ namespace TeamOps.UI.Forms
 
             _factory = Program.ConnectionFactory;
             _authorization = new AuthorizationService(_factory);
+            _sessionValidation = new SessionValidationService(_factory);
+            _sessionValidationTimer = new System.Windows.Forms.Timer { Interval = 5_000 };
+            _sessionValidationTimer.Tick += (_, _) => EnsureCurrentSession();
+            _sessionValidationTimer.Start();
+            FormClosed += (_, _) => _sessionValidationTimer.Dispose();
 
             InitializeWebView();
         }
@@ -87,6 +95,9 @@ namespace TeamOps.UI.Forms
 
         private void WebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
         {
+            if (!EnsureCurrentSession())
+                return;
+
             using var json = JsonDocument.Parse(e.WebMessageAsJson);
             var root = json.RootElement;
 
@@ -478,6 +489,36 @@ namespace TeamOps.UI.Forms
         private void ShowAccessDeniedAsync()
         {
             BeginInvoke(new Action(ShowAccessDenied));
+        }
+
+        private bool EnsureCurrentSession()
+        {
+            if (_sessionEnding)
+                return false;
+
+            try
+            {
+                _sessionValidation.DemandCurrent(_user);
+                return true;
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException)
+            {
+                _sessionEnding = true;
+                _sessionValidationTimer.Stop();
+                Program.CurrentSession = null;
+                Program.CurrentUser = null;
+
+                foreach (Form ownedForm in OwnedForms)
+                    ownedForm.Close();
+
+                MessageBox.Show(
+                    "Sua sessao foi encerrada. Entre novamente para continuar.",
+                    "Sessao encerrada",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                BeginInvoke(new Action(Close));
+                return false;
+            }
         }
 
         private void OpenDialog(Func<Form> factory)
