@@ -23,6 +23,7 @@ namespace TeamOps.Core.Security
         public const string FollowUp = "followup";
         public const string Tasks = "tasks";
         public const string MasterCard = "mastercard";
+        public const string PaidLeave = "paidleave";
         public const string Reports = "reports";
         public const string Organization = "organization";
         public const string AccessControl = "accesscontrol";

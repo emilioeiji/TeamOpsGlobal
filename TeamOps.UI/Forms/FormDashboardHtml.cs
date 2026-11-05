@@ -125,7 +125,7 @@ namespace TeamOps.UI.Forms
                     {
                         var requestedSectorId = ReadInt(root, "sectorId");
                         Program.CurrentSession?.SelectSector(requestedSectorId <= 0 ? null : requestedSectorId);
-                        SendSectorContext();
+                        SendDashboard();
                     }
                     catch (UnauthorizedAccessException)
                     {
@@ -146,14 +146,14 @@ namespace TeamOps.UI.Forms
                     break;
 
                 case "open:atribuir":
-                    if (!HasAccess(AccessLevel.Admin))
+                    if (!CanOpen(ModuleCodes.AccessControl, PermissionActions.Administer))
                         ShowAccessDeniedAsync();
                     else
                         OpenDialog(() => new FormAssignments());
                     break;
 
                 case "open:relatorios":
-                    if (!HasAccess(AccessLevel.GL))
+                    if (!CanOpen(ModuleCodes.Reports))
                         ShowAccessDeniedAsync();
                     else
                         OpenDialog(() => new HTMLFormReports(
@@ -167,7 +167,7 @@ namespace TeamOps.UI.Forms
                     break;
 
                 case "open:presence":
-                    if (!HasAccess(AccessLevel.GL))
+                    if (!CanOpen(ModuleCodes.Presence))
                         ShowAccessDeniedAsync();
                     else
                         OpenDialog(() => new HTMLFormPresenceLayout(
@@ -178,7 +178,7 @@ namespace TeamOps.UI.Forms
                     break;
 
                 case "open:haidai":
-                    if (!HasAccess(AccessLevel.GL))
+                    if (!CanOpen(ModuleCodes.Haidai))
                         ShowAccessDeniedAsync();
                     else
                         OpenDialog(() => new HTMLFormHaidai(
@@ -189,7 +189,7 @@ namespace TeamOps.UI.Forms
                     break;
 
                 case "open:followup":
-                    if (!HasAccess(AccessLevel.KL))
+                    if (!CanOpen(ModuleCodes.FollowUp))
                         ShowAccessDeniedAsync();
                     else
                         OpenDialog(() => new HTMLFormFollowUp(
@@ -200,7 +200,7 @@ namespace TeamOps.UI.Forms
                     break;
 
                 case "open:tasks":
-                    if (!HasAccess(AccessLevel.GL))
+                    if (!CanOpen(ModuleCodes.Tasks))
                         ShowAccessDeniedAsync();
                     else
                         OpenDialog(() => new HTMLFormTasks(
@@ -211,7 +211,7 @@ namespace TeamOps.UI.Forms
                     break;
 
                 case "open:mastercard":
-                    if (!HasAccess(AccessLevel.KL))
+                    if (!CanOpen(ModuleCodes.MasterCard))
                         ShowAccessDeniedAsync();
                     else
                         OpenDialog(() => new HTMLFormMasterCard(
@@ -222,7 +222,7 @@ namespace TeamOps.UI.Forms
                     break;
 
                 case "open:production":
-                    if (!HasAccess(AccessLevel.GL))
+                    if (!CanOpen(ModuleCodes.Production))
                         ShowAccessDeniedAsync();
                     else
                         OpenDialog(() => new HTMLFormProductionMonitor(
@@ -233,7 +233,7 @@ namespace TeamOps.UI.Forms
                     break;
 
                 case "open:hikitsugui":
-                    if (!HasAccess(AccessLevel.KL))
+                    if (!CanOpen(ModuleCodes.Hikitsugui, PermissionActions.Create))
                         ShowAccessDeniedAsync();
                     else
                         OpenDialog(() => new HTMLHikitsuguiCreate(
@@ -244,7 +244,7 @@ namespace TeamOps.UI.Forms
                     break;
 
                 case "open:hikitsugui_read":
-                    if (!HasAccess(AccessLevel.KL))
+                    if (!CanOpen(ModuleCodes.Hikitsugui))
                         ShowAccessDeniedAsync();
                     else
                         OpenDialog(() => new HTMLHikitsuguiLeaderRead(
@@ -255,7 +255,7 @@ namespace TeamOps.UI.Forms
                     break;
 
                 case "open:sobradepeca":
-                    if (!HasAccess(AccessLevel.KL))
+                    if (!CanOpen(ModuleCodes.SobraDePeca))
                         ShowAccessDeniedAsync();
                     else
                         OpenDialog(() => new HTMLFormSobraDePeca(
@@ -266,25 +266,28 @@ namespace TeamOps.UI.Forms
                     break;
 
                 case "open:pr":
-                    if (!HasAccess(AccessLevel.KL))
+                    if (!CanOpen(ModuleCodes.PrCl, PermissionActions.Create))
                         ShowAccessDeniedAsync();
                     else
                         OpenDialog(() => new HTMLFormPrCl(_factory, _user, _currentOperator, isPr: true));
                     break;
 
                 case "open:cl":
-                    if (!HasAccess(AccessLevel.KL))
+                    if (!CanOpen(ModuleCodes.PrCl, PermissionActions.Create))
                         ShowAccessDeniedAsync();
                     else
                         OpenDialog(() => new HTMLFormPrCl(_factory, _user, _currentOperator, isPr: false));
                     break;
 
                 case "open:yukyu":
-                    OpenDialog(() => new FormPaidLeaveTracking(
-                        _currentOperator,
-                        _currentShift,
-                        _factory
-                    ));
+                    if (!CanOpen(ModuleCodes.PaidLeave))
+                        ShowAccessDeniedAsync();
+                    else
+                        OpenDialog(() => new FormPaidLeaveTracking(
+                            _currentOperator,
+                            _currentShift,
+                            _factory
+                        ));
                     break;
 
                 case "open:admin":
@@ -328,6 +331,7 @@ namespace TeamOps.UI.Forms
                     tasks = GetPendingTaskItems(),
                     masterCards = GetPendingMasterCardItems()
                 },
+                permissions = GetDashboardPermissions(),
                 profileCode = Program.CurrentSession?.Access.ProfileCode ?? _user.AccessLevel.ToString(),
                 selectedSectorId = Program.CurrentSession?.SelectedSectorId,
                 canUseAggregateScope = Program.CurrentSession?.CanUseAggregateScope ?? false,
@@ -338,15 +342,6 @@ namespace TeamOps.UI.Forms
                     namePt = sector.NamePt,
                     nameJp = sector.NameJp
                 }).ToArray() ?? []
-            });
-        }
-
-        private void SendSectorContext()
-        {
-            PostJson(new
-            {
-                type = "sector_context_changed",
-                selectedSectorId = Program.CurrentSession?.SelectedSectorId
             });
         }
 
@@ -361,6 +356,13 @@ namespace TeamOps.UI.Forms
 
         private int GetOpenTasksForCurrentShift()
         {
+            if (!CanOpen(ModuleCodes.Tasks))
+                return 0;
+
+            var sectorIds = GetDashboardSectorIds();
+            if (sectorIds.Length == 0)
+                return 0;
+
             using var conn = _factory.CreateOpenConnection();
 
             var tasksTableExists = conn.ExecuteScalar<int>(
@@ -377,16 +379,25 @@ namespace TeamOps.UI.Forms
                 @"SELECT COUNT(1)
                   FROM Tasks
                   WHERE ShiftId = @ShiftId
+                    AND SectorId IN @SectorIds
                     AND Status NOT IN ('completed', 'cancelled')",
                 new
                 {
-                    ShiftId = _currentShift.Id
+                    ShiftId = _currentShift.Id,
+                    SectorIds = sectorIds
                 }
             );
         }
 
         private IReadOnlyList<object> GetPendingTaskItems()
         {
+            if (!CanOpen(ModuleCodes.Tasks))
+                return Array.Empty<object>();
+
+            var sectorIds = GetDashboardSectorIds();
+            if (sectorIds.Length == 0)
+                return Array.Empty<object>();
+
             using var conn = _factory.CreateOpenConnection();
 
             var tasksTableExists = conn.ExecuteScalar<int>(
@@ -410,12 +421,14 @@ namespace TeamOps.UI.Forms
                   FROM Tasks t
                   LEFT JOIN Operators op ON op.CodigoFJ = t.AssigneeCodigoFJ
                   WHERE t.ShiftId = @ShiftId
+                    AND t.SectorId IN @SectorIds
                     AND t.Status NOT IN ('completed', 'cancelled')
                   ORDER BY date(t.DueDate) ASC, t.Id DESC
                   LIMIT 6;",
                 new
                 {
-                    ShiftId = _currentShift.Id
+                    ShiftId = _currentShift.Id,
+                    SectorIds = sectorIds
                 })
                 .Select(item => new
                 {
@@ -432,6 +445,13 @@ namespace TeamOps.UI.Forms
 
         private IReadOnlyList<object> GetPendingMasterCardItems()
         {
+            if (!CanOpen(ModuleCodes.MasterCard))
+                return Array.Empty<object>();
+
+            var sectorIds = GetDashboardSectorIds();
+            if (sectorIds.Length == 0)
+                return Array.Empty<object>();
+
             using var conn = _factory.CreateOpenConnection();
             MasterCardModuleService.EnsureSchema(conn);
 
@@ -448,11 +468,13 @@ namespace TeamOps.UI.Forms
                   LEFT JOIN Operators op ON op.CodigoFJ = m.OperatorCodigoFJ
                   LEFT JOIN Equipments eq ON eq.Id = m.EquipmentId
                   WHERE m.Status IN ('in_progress', 'follow')
+                    AND m.SectorId IN @SectorIds
                   ORDER BY
                       CASE m.Status WHEN 'follow' THEN 0 ELSE 1 END,
                       date(COALESCE(m.FollowDate, m.StartDate)) ASC,
                       m.Id DESC
-                  LIMIT 6;")
+                  LIMIT 6;",
+                new { SectorIds = sectorIds })
                 .Select(item => new
                 {
                     id = item.Id,
@@ -469,14 +491,58 @@ namespace TeamOps.UI.Forms
 
         private int GetMasterCardCountByStatus(string status)
         {
+            if (!CanOpen(ModuleCodes.MasterCard))
+                return 0;
+
+            var sectorIds = GetDashboardSectorIds();
+            if (sectorIds.Length == 0)
+                return 0;
+
             using var conn = _factory.CreateOpenConnection();
             MasterCardModuleService.EnsureSchema(conn);
-            return MasterCardModuleService.CountByStatus(conn, status);
+            return conn.ExecuteScalar<int>(
+                @"SELECT COUNT(1)
+                  FROM MasterCards
+                  WHERE Status = @Status
+                    AND SectorId IN @SectorIds;",
+                new { Status = status, SectorIds = sectorIds });
         }
 
-        private bool HasAccess(AccessLevel level)
+        private int[] GetDashboardSectorIds()
         {
-            return _user.AccessLevel >= level;
+            var authorized = _authorization.GetContext(_user.Id).AuthorizedSectorIds;
+            var selected = Program.CurrentSession?.SelectedSectorId;
+            if (selected.HasValue && authorized.Contains(selected.Value))
+                return [selected.Value];
+
+            return authorized.ToArray();
+        }
+
+        private bool CanOpen(string moduleCode, string actionCode = PermissionActions.View)
+        {
+            return _authorization.IsAllowed(_user.Id, moduleCode, actionCode);
+        }
+
+        private object GetDashboardPermissions()
+        {
+            return new
+            {
+                operators = CanOpen(ModuleCodes.Organization),
+                reports = CanOpen(ModuleCodes.Reports),
+                presence = CanOpen(ModuleCodes.Presence),
+                haidai = CanOpen(ModuleCodes.Haidai),
+                followup = CanOpen(ModuleCodes.FollowUp),
+                tasks = CanOpen(ModuleCodes.Tasks),
+                mastercard = CanOpen(ModuleCodes.MasterCard),
+                production = CanOpen(ModuleCodes.Production),
+                hikitsuguiCreate = CanOpen(ModuleCodes.Hikitsugui, PermissionActions.Create),
+                hikitsuguiRead = CanOpen(ModuleCodes.Hikitsugui),
+                sobraDePeca = CanOpen(ModuleCodes.SobraDePeca),
+                prcl = CanOpen(ModuleCodes.PrCl, PermissionActions.Create),
+                paidleave = CanOpen(ModuleCodes.PaidLeave),
+                organizationAdmin = CanOpen(ModuleCodes.Organization, PermissionActions.Administer),
+                accessControl = CanOpen(ModuleCodes.AccessControl, PermissionActions.Administer)
+            };
         }
 
         private bool CanOpenWithoutOperationalIdentity(string action)

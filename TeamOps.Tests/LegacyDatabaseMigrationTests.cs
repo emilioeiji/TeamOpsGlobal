@@ -69,7 +69,7 @@ public sealed class LegacyDatabaseMigrationTests
                 FROM Sectors sector
                 JOIN OrganizationNodes node ON node.Id = sector.OrganizationNodeId
                 WHERE sector.Id IN (1, 2) AND node.Code = sector.Code COLLATE NOCASE;"));
-            Assert.Equal(5, migrated.ExecuteScalar<int>("SELECT COUNT(*) FROM SchemaMigrations;"));
+            Assert.Equal(6, migrated.ExecuteScalar<int>("SELECT COUNT(*) FROM SchemaMigrations;"));
             Assert.Equal(1, migrated.ExecuteScalar<int>(
                 "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'UX_Sectors_Code';"));
         }

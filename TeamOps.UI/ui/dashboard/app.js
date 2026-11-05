@@ -16,20 +16,22 @@ const ACCESS_LABELS = {
 };
 
 const PERMISSION_RULES = {
-    btnRelatorios: 3,
-    btnPresenca: 3,
-    btnHaidai: 3,
-    btnFollowUp: 2,
-    btnTasks: 3,
-    btnMasterCard: 2,
-    btnProduction: 3,
-    btnHikitsugui: 2,
-    btnHikitsuguiLeaderRead: 2,
-    btnPR: 2,
-    btnCL: 2,
-    btnSobraDePeca: 2,
-    btnAdmin: 5,
-    btnAccessControl: 5
+    btnOperadores: "operators",
+    btnRelatorios: "reports",
+    btnPresenca: "presence",
+    btnHaidai: "haidai",
+    btnFollowUp: "followup",
+    btnTasks: "tasks",
+    btnMasterCard: "mastercard",
+    btnProduction: "production",
+    btnHikitsugui: "hikitsuguiCreate",
+    btnHikitsuguiLeaderRead: "hikitsuguiRead",
+    btnPR: "prcl",
+    btnCL: "prcl",
+    btnYukyu: "paidleave",
+    btnSobraDePeca: "sobraDePeca",
+    btnAdmin: "organizationAdmin",
+    btnAccessControl: "accessControl"
 };
 
 const I18N = {
@@ -264,13 +266,13 @@ function hydrateDashboard(payload) {
     renderSectorContext();
 
     const level = Number(payload.accessLevel ?? 0);
-    const label = ACCESS_LABELS[state.locale]?.[level] || `Nivel ${level}`;
+    const label = payload.profileCode || ACCESS_LABELS[state.locale]?.[level] || `Nivel ${level}`;
     const profilePrefix = I18N[state.locale]?.profilePrefix || "Perfil";
 
     setText("lblAccessLevel", label);
     setText("accessBadge", `${profilePrefix} ${label}`);
 
-    applyPermissions(level);
+    applyPermissions(payload.permissions || {});
     maybeShowPendingModal(payload);
 }
 
@@ -319,12 +321,12 @@ function refreshNames() {
     setText("lblShift", shiftName);
 }
 
-function applyPermissions(level) {
-    Object.entries(PERMISSION_RULES).forEach(([id, minimumLevel]) => {
+function applyPermissions(permissions) {
+    Object.entries(PERMISSION_RULES).forEach(([id, permissionKey]) => {
         const button = document.getElementById(id);
         if (!button) return;
 
-        button.classList.toggle("hidden", level < minimumLevel);
+        button.classList.toggle("hidden", permissions[permissionKey] !== true);
     });
 
     document.querySelectorAll("[data-group]").forEach(group => {
@@ -418,7 +420,7 @@ function setLocale(locale) {
         setText("lblDate", formatDashboardDate(state.payload.dateIso, state.locale));
 
         const level = Number(state.payload.accessLevel ?? 0);
-        const label = ACCESS_LABELS[state.locale]?.[level] || `Nivel ${level}`;
+        const label = state.payload.profileCode || ACCESS_LABELS[state.locale]?.[level] || `Nivel ${level}`;
         setText("lblAccessLevel", label);
         setText("accessBadge", `${strings.profilePrefix} ${label}`);
         renderPendingModal(state.payload);

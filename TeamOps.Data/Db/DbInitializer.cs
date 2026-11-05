@@ -74,7 +74,8 @@ namespace TeamOps.Data.Db
             new(2, "Organization hierarchy", "TeamOps.Data.Migrations.V2_0002_Organization.sql"),
             new(3, "Identity and authorization", "TeamOps.Data.Migrations.V2_0003_IdentityAuthorization.sql"),
             new(4, "Hikitsugui audiences", "TeamOps.Data.Migrations.V2_0004_HikitsuguiAudiences.sql"),
-            new(5, "Tasks sector scope", "TeamOps.Data.Migrations.V2_0005_TasksSectorScope.sql")
+            new(5, "Tasks sector scope", "TeamOps.Data.Migrations.V2_0005_TasksSectorScope.sql"),
+            new(6, "Paid leave permission", "TeamOps.Data.Migrations.V2_0006_PaidLeavePermission.sql")
         ];
 
         private static void EnsureLegacyBaseline(SqliteConnection conn)

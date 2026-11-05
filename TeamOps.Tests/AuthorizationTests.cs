@@ -85,6 +85,23 @@ public sealed class AuthorizationTests
     }
 
     [Fact]
+    public void DashboardModules_UseTheCentralPermissionMatrix()
+    {
+        using var context = new DatabaseTestContext();
+        var opId = CreateUser(context, "OP", "5552", "IAS");
+        var klId = CreateUser(context, "KL", "5552", "DAD");
+        var glId = CreateUser(context, "GL", "5552", "DAD");
+        var authorization = new AuthorizationService(context.Factory);
+
+        Assert.True(authorization.IsAllowed(opId, ModuleCodes.Hikitsugui, PermissionActions.View));
+        Assert.True(authorization.IsAllowed(opId, ModuleCodes.PaidLeave, PermissionActions.View));
+        Assert.False(authorization.IsAllowed(opId, ModuleCodes.FollowUp, PermissionActions.View));
+        Assert.True(authorization.IsAllowed(klId, ModuleCodes.FollowUp, PermissionActions.View));
+        Assert.False(authorization.IsAllowed(klId, ModuleCodes.Production, PermissionActions.View));
+        Assert.True(authorization.IsAllowed(glId, ModuleCodes.Production, PermissionActions.View));
+    }
+
+    [Fact]
     public void SectorAssignment_OutsideReferenceTree_IsRejected()
     {
         using var context = new DatabaseTestContext();
