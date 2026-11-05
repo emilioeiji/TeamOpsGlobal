@@ -1,16 +1,18 @@
 # TeamOps
 
+Aplicacao industrial C# WinForms + WebView2 com SQLite local, autorizacao multissetor e documentos/integracoes em armazenamento local ou UNC.
 
+## Validacao
 
-git remote set-url origin https://github.com/emilioeiji/TeamOps.git
+```powershell
+dotnet test .\TeamOps.Tests\TeamOps.Tests.csproj
+dotnet build .\TeamOps.UI\TeamOps.UI.csproj
+```
 
+## Documentacao
 
+- `docs/architecture.md`: arquitetura, inicializacao, seguranca e armazenamento.
+- `docs/deployment.md`: publicacao, configuracao UNC, verificacao previa, homologacao e rollback.
+- `docs/troubleshooting.md`: diagnostico dos problemas operacionais mais comuns.
 
-
-
-git remote set-url origin https://<usuario>:<token>@github.com/emilioeiji/TeamOps.git
-
-
-
-cd C:\Users\jg-naoe5\source\repos\TeamOps\TeamOps.UI
-dotnet publish -c Release -r win-x86 --self-contained true /p:PublishSingleFile=true
+Antes de implantar, use o modelo em `docs/examples/TeamOps.UI.production.config` e execute `scripts/Test-TeamOpsDeployment.ps1` contra a pasta publicada.

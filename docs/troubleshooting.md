@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Este guia foca problemas plausiveis em ambiente industrial, especialmente quando o banco SQLite e pastas operacionais dependem de rede, compartilhamentos ou drives mapeados.
+Este guia foca problemas plausiveis em ambiente industrial, com SQLite local e pastas operacionais em armazenamento local ou compartilhamento UNC.
 
 ## Sistema nao abre
 
@@ -8,18 +8,18 @@ Este guia foca problemas plausiveis em ambiente industrial, especialmente quando
 
 **SINTOMA:** erro ao abrir executavel, tela nao aparece, mensagem de banco/caminho/permissao.
 
-**CAUSA PROVAVEL:** drive de rede nao montado, `DatabasePath` inacessivel, SQLite indisponivel, permissao insuficiente, antivirus bloqueando arquivos, deploy incompleto ou arquivo de configuracao incorreto.
+**CAUSA PROVAVEL:** `DatabasePath` local inacessivel, SQLite indisponivel, permissao insuficiente, antivirus bloqueando arquivos, deploy incompleto ou arquivo de configuracao incorreto.
 
 **COMO RESOLVER:**
 
 1. Verificar se `C:\TeamOps\DB\teamops.db` ou o caminho configurado existe.
 2. Confirmar permissao de leitura e escrita na pasta do banco.
-3. Testar acesso ao compartilhamento de rede pelo Windows Explorer.
-4. Reiniciar o app apos reconectar o drive/rede.
+3. Confirmar que `DatabasePath` nao aponta para UNC ou drive mapeado.
+4. Executar `scripts\Test-TeamOpsDeployment.ps1` contra a pasta publicada.
 5. Conferir se todos os arquivos publicados estao na pasta do executavel.
 6. Verificar quarentena/bloqueio do antivirus.
 
-**COMO PREVENIR:** usar caminho UNC estavel quando possivel, validar permissoes por grupo, monitorar disponibilidade do compartilhamento e manter pacote de deploy completo.
+**COMO PREVENIR:** manter o SQLite local, usar UNC estavel somente para `StorageRoot`, validar permissoes por grupo e manter o pacote de deploy completo.
 
 ## Tela branca no WebView
 

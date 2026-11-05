@@ -56,7 +56,7 @@ Camada de persistencia. Contem:
 
 ### TeamOps.Config
 
-Centraliza resolucao de caminhos. `AppPaths.GetDatabasePath` busca `DatabasePath` no `App.config`; se ausente, usa `%LOCALAPPDATA%\TeamOps\TeamOps\teamops.db` ou uma pasta `data` no modo portable.
+Centraliza resolucao de caminhos. `AppPaths.GetDatabasePath` resolve o SQLite local. `StoragePathResolver` resolve documentos e integracoes dentro de `StorageRoot`, aceita UNC, rejeita unidades de rede mapeadas e impede que caminhos relativos escapem da raiz.
 
 ## Inicializacao
 
@@ -72,7 +72,7 @@ sequenceDiagram
     App->>Config: resolve DatabasePath
     App->>Init: EnsureCreated()
     Init->>DB: aplica schema/migrations
-    App->>DB: SeedDefaultAdmin()
+    App->>DB: verifica provisionamento inicial
     App->>Login: ShowDialog()
     Login-->>App: usuario autenticado
     App->>Dash: abre dashboard principal
@@ -80,24 +80,25 @@ sequenceDiagram
 
 ## Configuracao e caminhos
 
-O `TeamOps.UI/App.config` define, por padrao:
+O `TeamOps.UI/App.config` define `StorageRoot` como raiz dos documentos e integracoes. Caminhos relativos sao resolvidos dentro dessa raiz:
 
+- `StorageRoot`: `C:\TeamOps` no desenvolvimento ou `\\servidor\compartilhamento\TeamOps` em producao
 - `DatabasePath`: `C:\TeamOps\DB\teamops.db`
-- `PRDirectory`: `C:\TeamOps\PR\`
-- `PRTemplate`: `C:\TeamOps\Modelos\ModeloPR.xlsx`
-- `CLDirectory`: `C:\TeamOps\CL\`
-- `CLTemplate`: `C:\TeamOps\Modelos\ModeloCL.xlsx`
-- `HikitsuguiAttachmentPath`: `C:\TeamOps\Anexo\Hikitsugui\`
-- `OperatorScheduleDirectory`: `C:\TeamOps\Schedule\`
-- `HaidaiExportDirectory`: `C:\TeamOps\Haidai\`
-- `ProductionEventsDirectory`: `C:\TeamOps\Production\Events\`
-- `ProductionSourceEventsDirectory`: `C:\TeamOps\Production\Source\Events\`
-- `ProductionSourceDatDirectory`: `C:\TeamOps\Production\Source\Dat\`
-- `ProductionImportBatchPath`: `C:\TeamOps\Production\import-production.bat`
-- `ProductionImportCompletionFile`: `C:\TeamOps\Production\import.done`
+- `PRDirectory`: `PR`
+- `PRTemplate`: `Modelos\ModeloPR.xlsx`
+- `CLDirectory`: `CL`
+- `CLTemplate`: `Modelos\ModeloCL.xlsx`
+- `HikitsuguiAttachmentPath`: `Anexo\Hikitsugui`
+- `OperatorScheduleDirectory`: `Schedule`
+- `HaidaiExportDirectory`: `Haidai`
+- `ProductionEventsDirectory`: `Production\Events`
+- `ProductionSourceEventsDirectory`: `Production\Source\Events`
+- `ProductionSourceDatDirectory`: `Production\Source\Dat`
+- `ProductionImportBatchPath`: `Production\import-production.bat`
+- `ProductionImportCompletionFile`: `Production\import.done`
 - `ProductionImportTimeoutSeconds`: `180`
 
-Em producao, esses caminhos podem apontar para compartilhamentos de rede ou drives mapeados. Isso torna rede, permissao e disponibilidade de pasta dependencias criticas.
+`DatabasePath` e independente de `StorageRoot` e permanece local. Em producao, usar UNC para `StorageRoot`; unidades mapeadas sao rejeitadas. Caminhos relativos nao podem escapar da raiz usando `..`.
 
 ## WebView2 e modulos HTML
 
@@ -156,14 +157,16 @@ O dashboard abre os modulos por mensagens `open:*`, por exemplo `open:operadores
 
 ## Controle de acesso
 
-O dashboard consulta o usuario logado e compara `AccessLevel` antes de abrir modulos sensiveis. O acesso a atribuicoes, administracao e controle de acesso exige nivel administrativo. Relatorios, presenca, Haidai, tarefas e producao exigem nivel de lideranca. Follow-up, Master Card, Hikitsugui, Sobra de Peca, PR e CL exigem nivel KL ou superior.
+A fonte de verdade e o Schema V2: perfis hierarquicos, `ModulePermissions`, referencia na arvore e atribuicoes explicitas de setor. A camada de autorizacao combina permissao funcional e escopo organizacional em cada operacao protegida. O nivel numerico legado existe apenas para compatibilidade temporaria.
+
+`SessionVersion` permite revogar sessoes apos mudanca de senha ou acesso. O dashboard valida a versao autenticada periodicamente e antes de processar comandos.
 
 ## Banco de dados
 
 O banco usa SQLite com connection string:
 
 ```text
-Data Source=<DatabasePath>;Cache=Shared;Mode=ReadWriteCreate
+Data Source=<DatabasePath>;Mode=ReadWriteCreate;Pooling=True;Default Timeout=30
 ```
 
 O schema inclui tabelas para operadores, turnos, grupos, setores, usuarios, locais, follow-up, Hikitsugui, anexos, PR, CL, maquinas, eventos de maquina, paid leave, presenca, agenda de operadores, logs, tarefas e historico de tarefas.
