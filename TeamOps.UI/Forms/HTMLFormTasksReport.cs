@@ -7,13 +7,17 @@ using System.Linq;
 using System.Text.Json;
 using System.Windows.Forms;
 using TeamOps.Core.Entities;
+using TeamOps.Core.Security;
 using TeamOps.Data.Db;
+using TeamOps.Data.Security;
 
 namespace TeamOps.UI.Forms
 {
     public partial class HTMLFormTasksReport : Form
     {
         private readonly SqliteConnectionFactory _factory;
+        private readonly User _currentUser;
+        private readonly AuthorizationService _authorization;
 
         private static readonly (string Value, string LabelPt, string LabelJp)[] TaskStatuses =
         {
@@ -24,13 +28,15 @@ namespace TeamOps.UI.Forms
             ("cancelled", "Cancelada", "\u53d6\u6d88")
         };
 
-        public HTMLFormTasksReport(SqliteConnectionFactory factory)
+        public HTMLFormTasksReport(SqliteConnectionFactory factory, User currentUser)
         {
             InitializeComponent();
             Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
             Text = L("Relatorio de Tasks", "Tasks Report");
 
             _factory = factory;
+            _currentUser = currentUser;
+            _authorization = new AuthorizationService(factory);
 
             InitializeWebView();
         }
@@ -91,10 +97,16 @@ namespace TeamOps.UI.Forms
 
         private void LoadInitial()
         {
+            _authorization.Demand(_currentUser.Id, ModuleCodes.Tasks, PermissionActions.View);
+            var context = _authorization.GetContext(_currentUser.Id);
             using var conn = _factory.CreateOpenConnection();
             EnsureSchema(conn);
 
             var filter = CreateDefaultFilter();
+            filter.SectorId = Program.CurrentSession?.SelectedSectorId
+                ?? (string.Equals(context.ScopeMode, "OrganizationTree", StringComparison.Ordinal)
+                    ? 0
+                    : context.AuthorizedSectorIds.FirstOrDefault());
 
             PostJson(new
             {
@@ -102,9 +114,16 @@ namespace TeamOps.UI.Forms
                 data = new
                 {
                     locale = Program.CurrentLocale,
+                    allowAggregate = string.Equals(context.ScopeMode, "OrganizationTree", StringComparison.Ordinal),
                     filters = new
                     {
                         shifts = QueryShifts(conn).ToList(),
+                        sectors = _authorization.GetAuthorizedSectors(context).Select(item => new
+                        {
+                            id = item.Id,
+                            namePt = item.NamePt,
+                            nameJp = string.IsNullOrWhiteSpace(item.NameJp) ? item.NamePt : item.NameJp
+                        }).ToList(),
                         statuses = TaskStatuses.Select(status => new
                         {
                             value = status.Value,
@@ -117,6 +136,7 @@ namespace TeamOps.UI.Forms
                         dtInicial = filter.Start.ToString("yyyy-MM-dd"),
                         dtFinal = filter.End.ToString("yyyy-MM-dd"),
                         shiftId = 0,
+                        sectorId = filter.SectorId,
                         status = "",
                         search = ""
                     }
@@ -128,10 +148,16 @@ namespace TeamOps.UI.Forms
 
         private void SendRows(TaskReportFilter filter)
         {
+            _authorization.DemandSectorOrAggregate(
+                _currentUser.Id,
+                ModuleCodes.Tasks,
+                PermissionActions.View,
+                filter.SectorId);
+            var authorizedSectorIds = _authorization.GetContext(_currentUser.Id).AuthorizedSectorIds;
             using var conn = _factory.CreateOpenConnection();
             EnsureSchema(conn);
 
-            var rows = QueryTasks(conn, filter).ToList();
+            var rows = QueryTasks(conn, filter, authorizedSectorIds).ToList();
 
             PostJson(new
             {
@@ -152,6 +178,8 @@ namespace TeamOps.UI.Forms
                         dueDate = item.DueDate.ToString("yyyy-MM-dd"),
                         shiftNamePt = item.ShiftNamePt,
                         shiftNameJp = item.ShiftNameJp,
+                        sectorNamePt = item.SectorNamePt,
+                        sectorNameJp = item.SectorNameJp,
                         leaderNamePt = item.LeaderNamePt,
                         leaderNameJp = item.LeaderNameJp,
                         createdByNamePt = item.CreatedByNamePt,
@@ -178,10 +206,11 @@ namespace TeamOps.UI.Forms
                 TaskId = taskId,
                 Start = DateTime.MinValue,
                 End = DateTime.MaxValue
-            }).FirstOrDefault();
+            }, _authorization.GetContext(_currentUser.Id).AuthorizedSectorIds).FirstOrDefault();
 
             if (row == null)
                 throw new InvalidOperationException(L("Task nao encontrada.", "Task \u304c\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3002"));
+            _authorization.Demand(_currentUser.Id, ModuleCodes.Tasks, PermissionActions.View, row.SectorId);
 
             var history = conn.Query(
                 @"
@@ -227,6 +256,8 @@ namespace TeamOps.UI.Forms
                     dueDate = row.DueDate.ToString("yyyy-MM-dd"),
                     shiftNamePt = row.ShiftNamePt,
                     shiftNameJp = row.ShiftNameJp,
+                    sectorNamePt = row.SectorNamePt,
+                    sectorNameJp = row.SectorNameJp,
                     leaderNamePt = row.LeaderNamePt,
                     leaderNameJp = row.LeaderNameJp,
                     createdByNamePt = row.CreatedByNamePt,
@@ -256,13 +287,19 @@ namespace TeamOps.UI.Forms
             );
         }
 
-        private static IEnumerable<TaskRow> QueryTasks(System.Data.IDbConnection conn, TaskReportFilter filter)
+        private static IEnumerable<TaskRow> QueryTasks(
+            System.Data.IDbConnection conn,
+            TaskReportFilter filter,
+            IReadOnlyCollection<int> authorizedSectorIds)
         {
             const string sql = @"
                 SELECT
                     t.Id,
                     t.Description,
                     date(t.DueDate) AS DueDate,
+                    t.SectorId,
+                    COALESCE(sec.NamePt, '') AS SectorNamePt,
+                    COALESCE(NULLIF(sec.NameJp, ''), sec.NamePt, '') AS SectorNameJp,
                     COALESCE(sh.NamePt, '') AS ShiftNamePt,
                     COALESCE(NULLIF(sh.NameJp, ''), sh.NamePt, '') AS ShiftNameJp,
                     COALESCE(leader.NameRomanji, '') AS LeaderNamePt,
@@ -282,9 +319,12 @@ namespace TeamOps.UI.Forms
                     ) AS HistoryCount
                 FROM Tasks t
                 LEFT JOIN Shifts sh ON sh.Id = t.ShiftId
+                LEFT JOIN Sectors sec ON sec.Id = t.SectorId
                 LEFT JOIN Operators leader ON leader.CodigoFJ = t.AssigneeCodigoFJ
                 LEFT JOIN Operators creator ON creator.CodigoFJ = t.CreatedByCodigoFJ
                 WHERE (@taskId = 0 OR t.Id = @taskId)
+                  AND t.SectorId IN @authorizedSectorIds
+                  AND (@sectorId = 0 OR t.SectorId = @sectorId)
                   AND (@taskId > 0 OR date(t.DueDate) BETWEEN date(@start) AND date(@end))
                   AND (@shiftId = 0 OR t.ShiftId = @shiftId)
                   AND (@status = '' OR t.Status = @status)
@@ -306,6 +346,8 @@ namespace TeamOps.UI.Forms
             return conn.Query<TaskRow>(sql, new
             {
                 taskId = filter.TaskId,
+                authorizedSectorIds,
+                sectorId = filter.SectorId,
                 start = filter.Start.ToString("yyyy-MM-dd"),
                 end = filter.End.ToString("yyyy-MM-dd"),
                 shiftId = filter.ShiftId,
@@ -334,6 +376,7 @@ namespace TeamOps.UI.Forms
                         Description TEXT NOT NULL,
                         DueDate DATE NOT NULL,
                         ShiftId INTEGER NOT NULL,
+                        SectorId INTEGER NOT NULL,
                         AssigneeCodigoFJ TEXT,
                         Status TEXT NOT NULL,
                         CreatedByCodigoFJ TEXT NOT NULL,
@@ -343,6 +386,7 @@ namespace TeamOps.UI.Forms
                         CompletedAt DATETIME,
                         CancelledAt DATETIME,
                         FOREIGN KEY (ShiftId) REFERENCES Shifts(Id),
+                        FOREIGN KEY (SectorId) REFERENCES Sectors(Id),
                         FOREIGN KEY (AssigneeCodigoFJ) REFERENCES Operators(CodigoFJ),
                         FOREIGN KEY (CreatedByCodigoFJ) REFERENCES Operators(CodigoFJ)
                     );
@@ -386,6 +430,7 @@ namespace TeamOps.UI.Forms
                 Start = ReadDate(root, "dtInicial", DateTime.Today.AddMonths(-1)),
                 End = ReadDate(root, "dtFinal", DateTime.Today),
                 ShiftId = ReadInt(root, "shiftId"),
+                SectorId = ReadInt(root, "sectorId"),
                 Status = ReadString(root, "status"),
                 Search = ReadString(root, "search")
             };
@@ -430,6 +475,7 @@ namespace TeamOps.UI.Forms
             public DateTime Start { get; set; }
             public DateTime End { get; set; }
             public int ShiftId { get; set; }
+            public int SectorId { get; set; }
             public string Status { get; set; } = string.Empty;
             public string Search { get; set; } = string.Empty;
         }
@@ -439,6 +485,9 @@ namespace TeamOps.UI.Forms
             public int Id { get; set; }
             public string Description { get; set; } = string.Empty;
             public DateTime DueDate { get; set; }
+            public int SectorId { get; set; }
+            public string SectorNamePt { get; set; } = string.Empty;
+            public string SectorNameJp { get; set; } = string.Empty;
             public string ShiftNamePt { get; set; } = string.Empty;
             public string ShiftNameJp { get; set; } = string.Empty;
             public string LeaderNamePt { get; set; } = string.Empty;

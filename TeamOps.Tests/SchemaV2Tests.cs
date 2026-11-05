@@ -15,11 +15,30 @@ public sealed class SchemaV2Tests
         using var conn = context.Factory.CreateOpenConnection();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = "SELECT group_concat(Version, ',') FROM (SELECT Version FROM SchemaMigrations ORDER BY Version);";
-        Assert.Equal("1,2,3,4", cmd.ExecuteScalar()?.ToString());
+        Assert.Equal("1,2,3,4,5", cmd.ExecuteScalar()?.ToString());
 
         cmd.CommandText = "PRAGMA foreign_key_check;";
         using var violations = cmd.ExecuteReader();
         Assert.False(violations.Read());
+    }
+
+    [Fact]
+    public void Tasks_RequireAnActiveSector()
+    {
+        using var context = new DatabaseTestContext();
+        using var conn = context.Factory.CreateOpenConnection();
+        using var cmd = conn.CreateCommand();
+
+        cmd.CommandText = "SELECT COUNT(*) FROM pragma_table_info('Tasks') WHERE name = 'SectorId';";
+        Assert.Equal(1L, cmd.ExecuteScalar());
+
+        cmd.CommandText = @"
+            INSERT INTO Tasks
+                (Description, DueDate, ShiftId, Status, CreatedByCodigoFJ, SectorId)
+            VALUES
+                ('Sem setor', date('now'), 1, 'pending', 'UNKNOWN', NULL);";
+        var error = Assert.Throws<Microsoft.Data.Sqlite.SqliteException>(() => cmd.ExecuteNonQuery());
+        Assert.Contains("Task requer um setor ativo", error.Message);
     }
 
     [Fact]

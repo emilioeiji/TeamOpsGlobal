@@ -7,7 +7,9 @@ using System.Linq;
 using System.Text.Json;
 using System.Windows.Forms;
 using TeamOps.Core.Entities;
+using TeamOps.Core.Security;
 using TeamOps.Data.Db;
+using TeamOps.Data.Security;
 using TeamOps.UI.Forms.Models;
 
 namespace TeamOps.UI.Forms
@@ -17,6 +19,7 @@ namespace TeamOps.UI.Forms
         private readonly SqliteConnectionFactory _factory;
         private readonly User _currentUser;
         private readonly Operator _currentOperator;
+        private readonly AuthorizationService _authorization;
 
         private static readonly (string Value, string LabelPt, string LabelJp)[] TaskStatuses =
         {
@@ -38,6 +41,7 @@ namespace TeamOps.UI.Forms
             _factory = factory;
             _currentUser = currentUser;
             _currentOperator = currentOperator;
+            _authorization = new AuthorizationService(factory);
 
             InitializeWebView();
         }
@@ -96,6 +100,8 @@ namespace TeamOps.UI.Forms
 
         private void LoadInitialData()
         {
+            _authorization.Demand(_currentUser.Id, ModuleCodes.Tasks, PermissionActions.View);
+            var context = _authorization.GetContext(_currentUser.Id);
             using var conn = _factory.CreateOpenConnection();
             EnsureSchema(conn);
 
@@ -115,8 +121,16 @@ namespace TeamOps.UI.Forms
                     labelJp = status.LabelJp
                 }),
                 shifts = QueryShifts(conn).ToList(),
-                leaders = QueryLeaders(conn).ToList(),
-                rows = QueryTasks(conn).ToList()
+                sectors = _authorization.GetAuthorizedSectors(context).Select(item => new
+                {
+                    id = item.Id,
+                    namePt = item.NamePt,
+                    nameJp = string.IsNullOrWhiteSpace(item.NameJp) ? item.NamePt : item.NameJp
+                }).ToList(),
+                defaultSectorId = Program.CurrentSession?.SelectedSectorId
+                    ?? context.AuthorizedSectorIds.FirstOrDefault(),
+                leaders = QueryLeaders(conn, context.AuthorizedSectorIds).ToList(),
+                rows = QueryTasks(conn, context.AuthorizedSectorIds).ToList()
             });
         }
 
@@ -127,8 +141,10 @@ namespace TeamOps.UI.Forms
                 using var conn = _factory.CreateOpenConnection();
                 EnsureSchema(conn);
 
-                if (!TaskExists(conn, taskId))
+                var current = GetTaskState(conn, taskId);
+                if (current == null)
                     throw new InvalidOperationException(L("Task nao encontrada.", "Task が見つかりません。"));
+                _authorization.Demand(_currentUser.Id, ModuleCodes.Tasks, PermissionActions.View, current.SectorId);
 
                 PostJson(new
                 {
@@ -158,8 +174,9 @@ namespace TeamOps.UI.Forms
                 var dueDate = ParseDueDate(msg.dueDate);
                 var taskStatus = NormalizeTaskStatus(msg.taskStatus);
                 var leaderCodigoFJ = NormalizeLeader(msg.leaderCodigoFJ);
+                _authorization.Demand(_currentUser.Id, ModuleCodes.Tasks, PermissionActions.Create, msg.sectorId);
 
-                ValidatePayload(conn, description, dueDate, msg.shiftId, leaderCodigoFJ, taskStatus, false, 0);
+                ValidatePayload(conn, description, dueDate, msg.shiftId, msg.sectorId, leaderCodigoFJ, taskStatus, false, 0);
 
                 var now = DateTime.Now;
                 var timestamps = CreateTimestampsForNewTask(taskStatus, now);
@@ -173,6 +190,7 @@ namespace TeamOps.UI.Forms
                             Description,
                             DueDate,
                             ShiftId,
+                            SectorId,
                             AssigneeCodigoFJ,
                             Status,
                             CreatedByCodigoFJ,
@@ -187,6 +205,7 @@ namespace TeamOps.UI.Forms
                             @Description,
                             @DueDate,
                             @ShiftId,
+                            @SectorId,
                             @AssigneeCodigoFJ,
                             @Status,
                             @CreatedByCodigoFJ,
@@ -202,6 +221,7 @@ namespace TeamOps.UI.Forms
                         Description = description,
                         DueDate = dueDate.ToString("yyyy-MM-dd"),
                         ShiftId = msg.shiftId,
+                        SectorId = msg.sectorId,
                         AssigneeCodigoFJ = string.IsNullOrWhiteSpace(leaderCodigoFJ) ? null : leaderCodigoFJ,
                         Status = taskStatus,
                         CreatedByCodigoFJ = _currentOperator.CodigoFJ,
@@ -257,8 +277,10 @@ namespace TeamOps.UI.Forms
                 var dueDate = ParseDueDate(msg.dueDate);
                 var taskStatus = NormalizeTaskStatus(msg.taskStatus);
                 var leaderCodigoFJ = NormalizeLeader(msg.leaderCodigoFJ);
+                _authorization.Demand(_currentUser.Id, ModuleCodes.Tasks, PermissionActions.Edit, current.SectorId);
+                _authorization.Demand(_currentUser.Id, ModuleCodes.Tasks, PermissionActions.Edit, msg.sectorId);
 
-                ValidatePayload(conn, description, dueDate, msg.shiftId, leaderCodigoFJ, taskStatus, true, msg.id);
+                ValidatePayload(conn, description, dueDate, msg.shiftId, msg.sectorId, leaderCodigoFJ, taskStatus, true, msg.id);
 
                 var now = DateTime.Now;
                 var timestamps = ResolveTimestampsForStatus(current, taskStatus, now);
@@ -273,6 +295,7 @@ namespace TeamOps.UI.Forms
                             Description = @Description,
                             DueDate = @DueDate,
                             ShiftId = @ShiftId,
+                            SectorId = @SectorId,
                             AssigneeCodigoFJ = @AssigneeCodigoFJ,
                             Status = @Status,
                             UpdatedAt = @UpdatedAt,
@@ -286,6 +309,7 @@ namespace TeamOps.UI.Forms
                         Description = description,
                         DueDate = dueDate.ToString("yyyy-MM-dd"),
                         ShiftId = msg.shiftId,
+                        SectorId = msg.sectorId,
                         AssigneeCodigoFJ = string.IsNullOrWhiteSpace(leaderCodigoFJ) ? null : leaderCodigoFJ,
                         Status = taskStatus,
                         UpdatedAt = now.ToString("yyyy-MM-dd HH:mm:ss"),
@@ -338,6 +362,7 @@ namespace TeamOps.UI.Forms
 
                 var current = GetTaskState(conn, msg.id)
                     ?? throw new InvalidOperationException(L("Task nao encontrada para atualizar status.", "ステータス更新対象の Task が見つかりません。"));
+                _authorization.Demand(_currentUser.Id, ModuleCodes.Tasks, PermissionActions.Edit, current.SectorId);
 
                 var taskStatus = NormalizeTaskStatus(msg.taskStatus);
                 if (string.Equals(current.Status, taskStatus, StringComparison.OrdinalIgnoreCase))
@@ -410,10 +435,11 @@ namespace TeamOps.UI.Forms
 
         private void SendRows(System.Data.IDbConnection conn)
         {
+            var authorizedSectorIds = _authorization.GetContext(_currentUser.Id).AuthorizedSectorIds;
             PostJson(new
             {
                 type = "rows",
-                data = QueryTasks(conn).ToList()
+                data = QueryTasks(conn, authorizedSectorIds).ToList()
             });
         }
 
@@ -464,6 +490,7 @@ namespace TeamOps.UI.Forms
             string description,
             DateTime dueDate,
             int shiftId,
+            int sectorId,
             string leaderCodigoFJ,
             string taskStatus,
             bool isUpdate,
@@ -477,6 +504,9 @@ namespace TeamOps.UI.Forms
 
             if (shiftId <= 0)
                 throw new InvalidOperationException(L("Selecione o turno da task.", "Task のシフトを選択してください。"));
+
+            if (sectorId <= 0)
+                throw new InvalidOperationException(L("Selecione o setor da task.", "Task のセクターを選択してください。"));
 
             if (dueDate == default)
                 throw new InvalidOperationException(L("Informe quando a task deve ser concluida.", "Task の期限を入力してください。"));
@@ -493,11 +523,13 @@ namespace TeamOps.UI.Forms
                         WHERE CodigoFJ = @codigoFJ
                           AND Status = 1
                           AND IsLeader = 1
-                          AND ShiftId = @shiftId;",
+                          AND ShiftId = @shiftId
+                          AND SectorId = @sectorId;",
                     new
                     {
                         codigoFJ = leaderCodigoFJ,
-                        shiftId
+                        shiftId,
+                        sectorId
                     }
                 ) > 0;
 
@@ -520,6 +552,7 @@ namespace TeamOps.UI.Forms
                 @"
                     SELECT
                         Id,
+                        SectorId,
                         Status,
                         StartedAt,
                         CompletedAt,
@@ -639,29 +672,36 @@ namespace TeamOps.UI.Forms
             });
         }
 
-        private static IEnumerable<object> QueryLeaders(System.Data.IDbConnection conn)
+        private static IEnumerable<object> QueryLeaders(
+            System.Data.IDbConnection conn,
+            IReadOnlyCollection<int> authorizedSectorIds)
         {
             const string sql = @"
                 SELECT
                     CodigoFJ AS codigoFJ,
                     COALESCE(NameRomanji, CodigoFJ) AS namePt,
                     COALESCE(NULLIF(NameNihongo, ''), NameRomanji, CodigoFJ) AS nameJp,
-                    ShiftId AS shiftId
+                    ShiftId AS shiftId,
+                    SectorId AS sectorId
                 FROM Operators
                 WHERE Status = 1
                   AND IsLeader = 1
+                  AND SectorId IN @authorizedSectorIds
                 ORDER BY ShiftId, NameRomanji;";
 
-            return conn.Query(sql).Select(row => new
+            return conn.Query(sql, new { authorizedSectorIds }).Select(row => new
             {
                 codigoFJ = row.codigoFJ,
                 namePt = row.namePt,
                 nameJp = row.nameJp,
-                shiftId = row.shiftId
+                shiftId = row.shiftId,
+                sectorId = row.sectorId
             });
         }
 
-        private static IEnumerable<object> QueryTasks(System.Data.IDbConnection conn)
+        private static IEnumerable<object> QueryTasks(
+            System.Data.IDbConnection conn,
+            IReadOnlyCollection<int> authorizedSectorIds)
         {
             const string sql = @"
                 SELECT
@@ -669,6 +709,9 @@ namespace TeamOps.UI.Forms
                     t.Description AS description,
                     substr(t.DueDate, 1, 10) AS dueDate,
                     t.ShiftId AS shiftId,
+                    t.SectorId AS sectorId,
+                    COALESCE(sec.NamePt, '') AS sectorNamePt,
+                    COALESCE(NULLIF(sec.NameJp, ''), sec.NamePt, '') AS sectorNameJp,
                     COALESCE(sh.NamePt, '') AS shiftNamePt,
                     COALESCE(NULLIF(sh.NameJp, ''), sh.NamePt, '') AS shiftNameJp,
                     COALESCE(t.AssigneeCodigoFJ, '') AS leaderCodigoFJ,
@@ -685,19 +728,24 @@ namespace TeamOps.UI.Forms
                     t.CreatedByCodigoFJ AS createdByCodigoFJ
                 FROM Tasks t
                 LEFT JOIN Shifts sh ON sh.Id = t.ShiftId
+                LEFT JOIN Sectors sec ON sec.Id = t.SectorId
                 LEFT JOIN Operators op ON op.CodigoFJ = t.AssigneeCodigoFJ
                 LEFT JOIN Operators creator ON creator.CodigoFJ = t.CreatedByCodigoFJ
+                WHERE t.SectorId IN @authorizedSectorIds
                 ORDER BY
                     CASE WHEN t.Status IN ('completed', 'cancelled') THEN 1 ELSE 0 END,
                     date(t.DueDate) ASC,
                     t.Id DESC;";
 
-            return conn.Query(sql).Select(row => new
+            return conn.Query(sql, new { authorizedSectorIds }).Select(row => new
             {
                 id = row.id,
                 description = row.description,
                 dueDate = row.dueDate,
                 shiftId = row.shiftId,
+                sectorId = row.sectorId,
+                sectorNamePt = row.sectorNamePt,
+                sectorNameJp = row.sectorNameJp,
                 shiftNamePt = row.shiftNamePt,
                 shiftNameJp = row.shiftNameJp,
                 leaderCodigoFJ = row.leaderCodigoFJ,
@@ -760,6 +808,7 @@ namespace TeamOps.UI.Forms
                         Description TEXT NOT NULL,
                         DueDate DATE NOT NULL,
                         ShiftId INTEGER NOT NULL,
+                        SectorId INTEGER NOT NULL,
                         AssigneeCodigoFJ TEXT,
                         Status TEXT NOT NULL,
                         CreatedByCodigoFJ TEXT NOT NULL,
@@ -769,6 +818,7 @@ namespace TeamOps.UI.Forms
                         CompletedAt DATETIME,
                         CancelledAt DATETIME,
                         FOREIGN KEY (ShiftId) REFERENCES Shifts(Id),
+                        FOREIGN KEY (SectorId) REFERENCES Sectors(Id),
                         FOREIGN KEY (AssigneeCodigoFJ) REFERENCES Operators(CodigoFJ),
                         FOREIGN KEY (CreatedByCodigoFJ) REFERENCES Operators(CodigoFJ)
                     );
@@ -790,6 +840,9 @@ namespace TeamOps.UI.Forms
 
                     CREATE INDEX IF NOT EXISTS IX_Tasks_Shift_Assignee
                     ON Tasks(ShiftId, AssigneeCodigoFJ);
+
+                    CREATE INDEX IF NOT EXISTS IX_Tasks_Sector_Status_DueDate
+                    ON Tasks(SectorId, Status, DueDate);
 
                     CREATE INDEX IF NOT EXISTS IX_TaskStatusHistory_TaskId
                     ON TaskStatusHistory(TaskId, ChangedAt);"
@@ -813,6 +866,7 @@ namespace TeamOps.UI.Forms
         private sealed class TaskStateRow
         {
             public int Id { get; set; }
+            public int SectorId { get; set; }
             public string Status { get; set; } = string.Empty;
             public DateTime? StartedAt { get; set; }
             public DateTime? CompletedAt { get; set; }

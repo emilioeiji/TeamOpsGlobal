@@ -147,7 +147,9 @@ namespace TeamOps.UI.Forms
                     break;
 
                 case "open:tasks_report":
-                    OpenDialog(() => new HTMLFormTasksReport(_factory));
+                    OpenDialog(() => new HTMLFormTasksReport(
+                        _factory,
+                        Program.CurrentUser ?? throw new InvalidOperationException("Usuario nao autenticado.")));
                     break;
 
                 case "open:operators":

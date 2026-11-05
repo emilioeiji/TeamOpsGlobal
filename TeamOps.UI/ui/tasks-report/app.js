@@ -2,7 +2,10 @@ const state = {
     locale: "pt-BR",
     rows: [],
     shifts: [],
-    statuses: []
+    sectors: [],
+    statuses: [],
+    allowAggregate: false,
+    defaultSectorId: 0
 };
 
 const I18N = {
@@ -17,6 +20,7 @@ const I18N = {
         dateFrom: "Data Inicial",
         dateTo: "Data Final",
         shift: "Turno",
+        sector: "Setor",
         status: "Status",
         search: "Buscar",
         searchPlaceholder: "Task, lider, turno ou criador...",
@@ -49,6 +53,7 @@ const I18N = {
         labelDescription: "Descricao",
         labelDueDate: "Prazo",
         labelShift: "Turno",
+        labelSector: "Setor",
         labelLeader: "Responsavel",
         labelCreatedBy: "Criada por",
         labelCreatedAt: "Criada em",
@@ -72,6 +77,7 @@ const I18N = {
         dateFrom: "\u958b\u59cb\u65e5",
         dateTo: "\u7d42\u4e86\u65e5",
         shift: "\u30b7\u30d5\u30c8",
+        sector: "\u30bb\u30af\u30bf\u30fc",
         status: "\u30b9\u30c6\u30fc\u30bf\u30b9",
         search: "\u691c\u7d22",
         searchPlaceholder: "Task\u3001\u30ea\u30fc\u30c0\u30fc\u3001\u30b7\u30d5\u30c8\u3001\u4f5c\u6210\u8005...",
@@ -104,6 +110,7 @@ const I18N = {
         labelDescription: "\u5185\u5bb9",
         labelDueDate: "\u671f\u9650",
         labelShift: "\u30b7\u30d5\u30c8",
+        labelSector: "\u30bb\u30af\u30bf\u30fc",
         labelLeader: "\u62c5\u5f53\u8005",
         labelCreatedBy: "\u4f5c\u6210\u8005",
         labelCreatedAt: "\u4f5c\u6210\u65e5\u6642",
@@ -159,16 +166,21 @@ window.chrome.webview.addEventListener("message", event => {
 
 function hydrateInit(data) {
     state.locale = data.locale === "ja-JP" ? "ja-JP" : "pt-BR";
+    state.allowAggregate = data.allowAggregate === true;
+    state.defaultSectorId = Number(data.defaults?.sectorId || 0);
     state.shifts = normalizeShifts(data.filters?.shifts || []);
+    state.sectors = normalizeShifts(data.filters?.sectors || []);
     state.statuses = normalizeStatuses(data.filters?.statuses || []);
 
     applyLocale();
     fillSelect("cmbShift", state.shifts, "id", fieldName(), true);
+    fillSelect("cmbSector", state.sectors, "id", fieldName(), state.allowAggregate);
     fillSelect("cmbStatus", state.statuses, "value", statusFieldName(), true);
 
     document.getElementById("dtInicial").value = data.defaults?.dtInicial || "";
     document.getElementById("dtFinal").value = data.defaults?.dtFinal || "";
     document.getElementById("cmbShift").value = String(data.defaults?.shiftId || 0);
+    document.getElementById("cmbSector").value = String(state.defaultSectorId);
     document.getElementById("cmbStatus").value = data.defaults?.status || "";
     document.getElementById("txtSearchInput").value = data.defaults?.search || "";
 }
@@ -192,6 +204,7 @@ function applyLocale() {
     setText("txtDateFrom", t("dateFrom"));
     setText("txtDateTo", t("dateTo"));
     setText("txtShift", t("shift"));
+    setText("txtSector", t("sector"));
     setText("txtStatus", t("status"));
     setText("txtSearch", t("search"));
     document.getElementById("txtSearchInput").placeholder = t("searchPlaceholder");
@@ -221,6 +234,7 @@ function applyFilters() {
 
 function clearFilters() {
     document.getElementById("cmbShift").value = "0";
+    document.getElementById("cmbSector").value = String(state.defaultSectorId);
     document.getElementById("cmbStatus").value = "";
     document.getElementById("txtSearchInput").value = "";
     applyFilters();
@@ -231,6 +245,7 @@ function currentFilterPayload() {
         dtInicial: document.getElementById("dtInicial").value,
         dtFinal: document.getElementById("dtFinal").value,
         shiftId: Number(document.getElementById("cmbShift").value || 0),
+        sectorId: Number(document.getElementById("cmbSector").value || 0),
         status: document.getElementById("cmbStatus").value || "",
         search: document.getElementById("txtSearchInput").value.trim()
     };
@@ -261,7 +276,8 @@ function renderTable(rows) {
             </td>
             <td>${renderMiniStack([
                 `${t("labelDueDate")}: ${row.dueDate || "-"}`,
-                `${t("labelShift")}: ${localizedValue(row.shiftNamePt, row.shiftNameJp) || "-"}`
+                `${t("labelShift")}: ${localizedValue(row.shiftNamePt, row.shiftNameJp) || "-"}`,
+                `${t("labelSector")}: ${localizedValue(row.sectorNamePt, row.sectorNameJp) || "-"}`
             ])}</td>
             <td>${renderMiniStack([
                 `${t("labelLeader")}: ${localizedValue(row.leaderNamePt, row.leaderNameJp) || t("noLeader")}`,
@@ -301,6 +317,7 @@ function openModal(data) {
         [t("labelDescription"), data.description || "-"],
         [t("labelDueDate"), data.dueDate || "-"],
         [t("labelShift"), localizedValue(data.shiftNamePt, data.shiftNameJp) || "-"],
+        [t("labelSector"), localizedValue(data.sectorNamePt, data.sectorNameJp) || "-"],
         [t("labelLeader"), localizedValue(data.leaderNamePt, data.leaderNameJp) || t("noLeader")]
     ]);
 
@@ -382,6 +399,8 @@ function normalizeRows(items) {
         dueDate: item.dueDate || "",
         shiftNamePt: item.shiftNamePt || "",
         shiftNameJp: item.shiftNameJp || item.shiftNamePt || "",
+        sectorNamePt: item.sectorNamePt || "",
+        sectorNameJp: item.sectorNameJp || item.sectorNamePt || "",
         leaderNamePt: item.leaderNamePt || "",
         leaderNameJp: item.leaderNameJp || item.leaderNamePt || "",
         createdByNamePt: item.createdByNamePt || "",
@@ -401,7 +420,7 @@ function fillSelect(id, items, valueField, textField, withAll) {
     const options = [];
 
     if (withAll) {
-        options.push(`<option value="${id === "cmbShift" ? "0" : ""}">${escapeHtml(t("allOption"))}</option>`);
+        options.push(`<option value="${id === "cmbShift" || id === "cmbSector" ? "0" : ""}">${escapeHtml(t("allOption"))}</option>`);
     }
 
     items.forEach(item => {

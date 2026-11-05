@@ -58,6 +58,7 @@ const I18N = {
         descriptionPlaceholder: "Descreva a solicitacao da task com clareza...",
         dueDateLabel: "Quando",
         shiftLabel: "Turno",
+        sectorLabel: "Setor",
         leaderLabel: "Quem",
         leaderHint: "Opcional. Lista apenas lideres ativos do turno selecionado.",
         taskStatusLabel: "Status",
@@ -142,6 +143,7 @@ const I18N = {
         descriptionPlaceholder: "Task の内容を分かりやすく入力してください...",
         dueDateLabel: "期限",
         shiftLabel: "シフト",
+        sectorLabel: "セクター",
         leaderLabel: "担当者",
         leaderHint: "任意です。選択したシフトの有効なリーダーのみ表示します。",
         taskStatusLabel: "ステータス",
@@ -178,8 +180,10 @@ const I18N = {
 
 let rows = [];
 let shifts = [];
+let sectors = [];
 let leaders = [];
 let statuses = [];
+let defaultSectorId = 0;
 let currentModalMode = "create";
 let editingTaskId = 0;
 let viewingTaskId = 0;
@@ -199,7 +203,10 @@ function bindEvents() {
     document.getElementById("btnCloseModal").addEventListener("click", closeModal);
     document.getElementById("modalBackdrop").addEventListener("click", closeModal);
     document.getElementById("cmbShift").addEventListener("change", event => {
-        updateLeaderOptions(event.target.value, "");
+        updateLeaderOptions(event.target.value, document.getElementById("cmbSector").value, "");
+    });
+    document.getElementById("cmbSector").addEventListener("change", event => {
+        updateLeaderOptions(document.getElementById("cmbShift").value, event.target.value, "");
     });
 
     document.getElementById("btnCloseViewModal").addEventListener("click", closeViewModal);
@@ -274,8 +281,10 @@ function hydrateScreen(payload) {
 
     rows = normalizeRows(payload.rows || []);
     shifts = normalizeShifts(payload.shifts || []);
+    sectors = normalizeShifts(payload.sectors || []);
     leaders = normalizeLeaders(payload.leaders || []);
     statuses = normalizeStatuses(payload.statuses || []);
+    defaultSectorId = Number(payload.defaultSectorId || 0);
 
     setLocale(state.locale);
     refillLookupControls();
@@ -298,7 +307,8 @@ function normalizeLeaders(items) {
         codigoFJ: item.codigoFJ || "",
         namePt: item.namePt || "",
         nameJp: item.nameJp || item.namePt || "",
-        shiftId: Number(item.shiftId || 0)
+        shiftId: Number(item.shiftId || 0),
+        sectorId: Number(item.sectorId || 0)
     }));
 }
 
@@ -316,6 +326,9 @@ function normalizeRows(items) {
         description: item.description || "",
         dueDate: item.dueDate || "",
         shiftId: Number(item.shiftId || 0),
+        sectorId: Number(item.sectorId || 0),
+        sectorNamePt: item.sectorNamePt || "",
+        sectorNameJp: item.sectorNameJp || item.sectorNamePt || "",
         shiftNamePt: item.shiftNamePt || "",
         shiftNameJp: item.shiftNameJp || item.shiftNamePt || "",
         leaderCodigoFJ: item.leaderCodigoFJ || "",
@@ -334,18 +347,24 @@ function normalizeRows(items) {
 
 function refillLookupControls() {
     const currentShift = document.getElementById("cmbShift").value;
+    const currentSector = document.getElementById("cmbSector").value;
     const currentStatus = document.getElementById("cmbTaskStatus").value;
     const currentFilterStatus = document.getElementById("statusFilter").value;
     const currentLeader = document.getElementById("cmbLeader").value;
 
     fillSelect("cmbShift", shifts, "id", getLocalizedFieldName(), t("selectPlaceholder"));
+    fillSelect("cmbSector", sectors, "id", getLocalizedFieldName(), t("selectPlaceholder"));
     fillSelect("cmbTaskStatus", statuses, "value", getStatusFieldName(), t("selectPlaceholder"));
     fillSelect("statusFilter", statuses, "value", getStatusFieldName(), t("selectAll"));
 
     document.getElementById("cmbShift").value = currentShift;
+    document.getElementById("cmbSector").value = currentSector || String(defaultSectorId || "");
     document.getElementById("cmbTaskStatus").value = currentStatus || "pending";
     document.getElementById("statusFilter").value = currentFilterStatus;
-    updateLeaderOptions(document.getElementById("cmbShift").value, currentLeader);
+    updateLeaderOptions(
+        document.getElementById("cmbShift").value,
+        document.getElementById("cmbSector").value,
+        currentLeader);
 }
 
 function fillSelect(id, items, valueField, textField, firstLabel) {
@@ -523,7 +542,8 @@ function fillEditModal(task) {
     document.getElementById("txtDescription").value = task.description || "";
     document.getElementById("dtDueDate").value = task.dueDate || "";
     document.getElementById("cmbShift").value = String(task.shiftId || "");
-    updateLeaderOptions(task.shiftId, task.leaderCodigoFJ || "");
+    document.getElementById("cmbSector").value = String(task.sectorId || "");
+    updateLeaderOptions(task.shiftId, task.sectorId, task.leaderCodigoFJ || "");
     document.getElementById("cmbTaskStatus").value = task.taskStatus || "pending";
 
     document.getElementById("metaCreatedBy").textContent = getLocalizedValue(task.createdByNamePt, task.createdByNameJp) || "-";
@@ -548,6 +568,7 @@ function fillViewModal(task) {
     document.getElementById("viewTitle").textContent = t("viewTitle")(task.id);
     document.getElementById("viewStatus").textContent = getStatusLabel(task.taskStatus);
     document.getElementById("viewShift").textContent = getLocalizedValue(task.shiftNamePt, task.shiftNameJp) || "-";
+    document.getElementById("viewSector").textContent = getLocalizedValue(task.sectorNamePt, task.sectorNameJp) || "-";
     document.getElementById("viewLeader").textContent = getLocalizedValue(task.leaderNamePt, task.leaderNameJp) || t("noLeader");
     document.getElementById("viewDueDate").textContent = task.dueDate || "-";
     document.getElementById("viewCreatedBy").textContent = getLocalizedValue(task.createdByNamePt, task.createdByNameJp) || "-";
@@ -597,12 +618,13 @@ function resetModalForm() {
     document.getElementById("txtDescription").value = "";
     document.getElementById("dtDueDate").value = "";
     document.getElementById("cmbShift").value = "";
+    document.getElementById("cmbSector").value = String(defaultSectorId || "");
     document.getElementById("cmbTaskStatus").value = "pending";
     document.getElementById("metaCreatedBy").textContent = "-";
     document.getElementById("metaCreatedAt").textContent = "-";
     document.getElementById("metaUpdatedAt").textContent = "-";
     document.getElementById("metaCompletedAt").textContent = "-";
-    updateLeaderOptions("", "");
+    updateLeaderOptions("", defaultSectorId, "");
     renderHistoryList("historyList", []);
     syncModeState();
     applyFilters();
@@ -622,10 +644,12 @@ function closeViewModal() {
     applyFilters();
 }
 
-function updateLeaderOptions(shiftId, selectedLeaderCodigoFJ) {
+function updateLeaderOptions(shiftId, sectorId, selectedLeaderCodigoFJ) {
     const select = document.getElementById("cmbLeader");
     const normalizedShiftId = Number(shiftId || 0);
-    const availableLeaders = leaders.filter(item => Number(item.shiftId) === normalizedShiftId);
+    const normalizedSectorId = Number(sectorId || 0);
+    const availableLeaders = leaders.filter(item =>
+        Number(item.shiftId) === normalizedShiftId && Number(item.sectorId) === normalizedSectorId);
     const labelField = getLocalizedFieldName();
     const options = [`<option value="">${escapeHtml(t("noLeaderOption"))}</option>`];
 
@@ -656,6 +680,7 @@ function buildPayload() {
         description: document.getElementById("txtDescription").value.trim(),
         dueDate: document.getElementById("dtDueDate").value,
         shiftId: Number(document.getElementById("cmbShift").value || 0),
+        sectorId: Number(document.getElementById("cmbSector").value || 0),
         leaderCodigoFJ: document.getElementById("cmbLeader").value,
         taskStatus: document.getElementById("cmbTaskStatus").value || "pending"
     };
@@ -729,6 +754,8 @@ function setLocale(locale) {
     document.getElementById("txtDescription").placeholder = t("descriptionPlaceholder");
     document.getElementById("txtDueDateLabel").textContent = t("dueDateLabel");
     document.getElementById("txtShiftLabel").textContent = t("shiftLabel");
+    document.getElementById("txtSectorLabel").textContent = t("sectorLabel");
+    document.getElementById("txtViewSector").textContent = t("sectorLabel");
     document.getElementById("txtLeaderLabel").textContent = t("leaderLabel");
     document.getElementById("txtLeaderHint").textContent = t("leaderHint");
     document.getElementById("txtTaskStatusLabel").textContent = t("taskStatusLabel");

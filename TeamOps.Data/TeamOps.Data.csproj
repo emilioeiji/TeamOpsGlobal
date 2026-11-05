@@ -18,6 +18,7 @@
     <EmbeddedResource Include="Migrations\V2_0002_Organization.sql" />
     <EmbeddedResource Include="Migrations\V2_0003_IdentityAuthorization.sql" />
     <EmbeddedResource Include="Migrations\V2_0004_HikitsuguiAudiences.sql" />
+    <EmbeddedResource Include="Migrations\V2_0005_TasksSectorScope.sql" />
   </ItemGroup>
 
   <ItemGroup>
