@@ -43,4 +43,5 @@ FROM AcompYukyu a
 JOIN Operators o ON o.CodigoFJ = a.OperatorCodigoFJ
 LEFT JOIN Operators l ON l.CodigoFJ = a.AuthorizedByCodigoFJ
 WHERE (@ShiftId = 0 OR o.ShiftId = @ShiftId)
+  AND o.SectorId IN @AuthorizedSectorIds
 ORDER BY a.RequestDate DESC;

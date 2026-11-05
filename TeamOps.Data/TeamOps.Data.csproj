@@ -100,6 +100,9 @@
     <None Update="Sql\paidleave\get_folha_info.sql">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="Sql\paidleave\get_conferencia_info.sql">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="Sql\paidleave\get_todoke_info.sql">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
@@ -118,9 +121,6 @@
     <None Update="Sql\paidleave\insert_todoke.sql">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Sql\paidleave\select_all.sql">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
     <None Update="Sql\paidleave\select_all_by_shift.sql">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
@@ -128,9 +128,6 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Sql\paidleave\select_operators.sql">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Update="Sql\paidleave\toggle_conferencia.sql">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Sql\paidleave\update_acomp.sql">

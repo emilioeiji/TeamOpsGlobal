@@ -284,6 +284,7 @@ namespace TeamOps.UI.Forms
                         ShowAccessDeniedAsync();
                     else
                         OpenDialog(() => new FormPaidLeaveTracking(
+                            _user,
                             _currentOperator,
                             _currentShift,
                             _factory

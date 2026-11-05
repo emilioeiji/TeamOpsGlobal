@@ -5,8 +5,10 @@ using System.Windows.Forms;
 using Dapper;
 using Microsoft.Web.WebView2.Core;
 using TeamOps.Core.Entities;
+using TeamOps.Core.Security;
 using TeamOps.Data.Db;
 using TeamOps.Data.Repositories;
+using TeamOps.Data.Security;
 using TeamOps.UI.Forms.Models;
 
 namespace TeamOps.UI.Forms
@@ -15,13 +17,17 @@ namespace TeamOps.UI.Forms
     {
         private readonly SqliteConnectionFactory _factory;
         private readonly Operator _currentOperator;
+        private readonly User _currentUser;
+        private readonly PaidLeaveAuthorizationService _authorization;
 
-        public FormPaidLeaveTracking(Operator op, Shift shift, SqliteConnectionFactory factory)
+        public FormPaidLeaveTracking(User user, Operator op, Shift shift, SqliteConnectionFactory factory)
         {
             InitializeComponent();
 
             _factory = factory;
             _currentOperator = op;
+            _currentUser = user;
+            _authorization = new PaidLeaveAuthorizationService(factory);
 
             InitializeWebView();
         }
@@ -44,99 +50,125 @@ namespace TeamOps.UI.Forms
             var msg = JsonSerializer.Deserialize<JsRequest>(e.WebMessageAsJson);
             if (msg == null) return;
 
-            switch (msg.action)
+            try
             {
-                case "paidleave_load":
-                    RefreshTable(0);
-                    SendJsonFromSql("select_operators.sql");
-                    SendJsonFromSql("select_motivos.sql");
-                    break;
+                switch (msg.action)
+                {
+                    case "paidleave_load":
+                        var authorizedSectorIds = _authorization.GetAuthorizedSectorIds(_currentUser.Id);
+                        SendPermissions();
+                        RefreshTable(0);
+                        SendJsonFromSql("select_operators.sql", new { AuthorizedSectorIds = authorizedSectorIds });
+                        SendJsonFromSql("select_motivos.sql");
+                        break;
 
-                case "toggle_todoke":
-                    ExecuteSql("insert_todoke.sql", new
-                    {
-                        AcompYukyuId = msg.id,
-                        TakenBy = _currentOperator.CodigoFJ,
-                        TakenAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
-                    });
+                    case "toggle_todoke":
+                        _authorization.DemandRequest(_currentUser.Id, PermissionActions.Edit, msg.id);
+                        ExecuteSql("insert_todoke.sql", new
+                        {
+                            AcompYukyuId = msg.id,
+                            TakenBy = _currentOperator.CodigoFJ,
+                            TakenAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
+                        });
 
-                    RefreshTable(msg.shiftId);
-                    break;
+                        RefreshTable(msg.shiftId);
+                        break;
 
-                case "toggle_folha":
-                    ExecuteSql("insert_folha.sql", new
-                    {
-                        AcompYukyuId = msg.id,
-                        TakenBy = _currentOperator.CodigoFJ,
-                        TakenAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
-                    });
+                    case "toggle_folha":
+                        _authorization.DemandRequest(_currentUser.Id, PermissionActions.Edit, msg.id);
+                        ExecuteSql("insert_folha.sql", new
+                        {
+                            AcompYukyuId = msg.id,
+                            TakenBy = _currentOperator.CodigoFJ,
+                            TakenAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
+                        });
 
-                    RefreshTable(msg.shiftId);
-                    break;
+                        RefreshTable(msg.shiftId);
+                        break;
 
-                case "get_todoke_info":
-                    SendJsonFromSql("get_todoke_info.sql", new { AcompYukyuId = msg.id });
-                    break;
+                    case "get_todoke_info":
+                        _authorization.DemandRequest(_currentUser.Id, PermissionActions.View, msg.id);
+                        SendJsonFromSql("get_todoke_info.sql", new { AcompYukyuId = msg.id });
+                        break;
 
-                case "get_folha_info":
-                    SendJsonFromSql("get_folha_info.sql", new { AcompYukyuId = msg.id });
-                    break;
+                    case "get_folha_info":
+                        _authorization.DemandRequest(_currentUser.Id, PermissionActions.View, msg.id);
+                        SendJsonFromSql("get_folha_info.sql", new { AcompYukyuId = msg.id });
+                        break;
 
-                case "add_request":
-                    ExecuteSql("insert_acomp.sql", new
-                    {
-                        OperatorCodigoFJ = msg.opCodigoFJ,
-                        RequestDate = msg.reqDate,
-                        AuthorizedByCodigoFJ = _currentOperator.CodigoFJ,
-                        Notes = msg.notes,
-                        TodokeMotivoId = msg.motivoId
-                    });
+                    case "add_request":
+                        _authorization.DemandOperator(_currentUser.Id, PermissionActions.Create, msg.opCodigoFJ);
+                        ExecuteSql("insert_acomp.sql", new
+                        {
+                            OperatorCodigoFJ = msg.opCodigoFJ,
+                            RequestDate = msg.reqDate,
+                            AuthorizedByCodigoFJ = _currentOperator.CodigoFJ,
+                            Notes = msg.notes,
+                            TodokeMotivoId = msg.motivoId
+                        });
 
-                    RefreshTable(msg.shiftId);
-                    break;
+                        RefreshTable(msg.shiftId);
+                        break;
 
-                case "update_request":
-                    ExecuteSql("update_acomp.sql", new
-                    {
-                        Id = msg.id,
-                        OperatorCodigoFJ = msg.opCodigoFJ,
-                        RequestDate = msg.reqDate,
-                        Notes = msg.notes,
-                        TodokeMotivoId = msg.motivoId
-                    });
+                    case "update_request":
+                        _authorization.DemandRequestMove(
+                            _currentUser.Id,
+                            PermissionActions.Edit,
+                            msg.id,
+                            msg.opCodigoFJ);
+                        ExecuteSql("update_acomp.sql", new
+                        {
+                            Id = msg.id,
+                            OperatorCodigoFJ = msg.opCodigoFJ,
+                            RequestDate = msg.reqDate,
+                            Notes = msg.notes,
+                            TodokeMotivoId = msg.motivoId
+                        });
 
-                    TryLogSystem("PaidLeave", "Editou", msg.id, $"Motivo={msg.motivoId}");
-                    RefreshTable(msg.shiftId);
-                    break;
+                        TryLogSystem("PaidLeave", "Editou", msg.id, $"Motivo={msg.motivoId}");
+                        RefreshTable(msg.shiftId);
+                        break;
 
-                case "delete_request":
-                    ExecuteSql("delete_acomp.sql", new
-                    {
-                        Id = msg.id
-                    });
+                    case "delete_request":
+                        _authorization.DemandRequest(_currentUser.Id, PermissionActions.Delete, msg.id);
+                        ExecuteSql("delete_acomp.sql", new
+                        {
+                            Id = msg.id
+                        });
 
-                    TryLogSystem("PaidLeave", "Excluiu", msg.id);
-                    RefreshTable(msg.shiftId);
-                    break;
-                
-                case "filter_shift":
-                    RefreshTable(msg.shiftId);
-                    break;
+                        TryLogSystem("PaidLeave", "Excluiu", msg.id);
+                        RefreshTable(msg.shiftId);
+                        break;
 
-                case "toggle_conferencia":
-                    ExecuteSql("insert_conferencia.sql", new
-                    {
-                        AcompYukyuId = msg.id,
-                        TakenBy = _currentOperator.CodigoFJ,
-                        TakenAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
-                    });
+                    case "filter_shift":
+                        RefreshTable(msg.shiftId);
+                        break;
 
-                    RefreshTable(msg.shiftId);
-                    break;
+                    case "toggle_conferencia":
+                        _authorization.DemandRequest(_currentUser.Id, PermissionActions.Edit, msg.id);
+                        ExecuteSql("insert_conferencia.sql", new
+                        {
+                            AcompYukyuId = msg.id,
+                            TakenBy = _currentOperator.CodigoFJ,
+                            TakenAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
+                        });
 
-                case "get_conferencia_info":
-                    SendJsonFromSql("get_conferencia_info.sql", new { AcompYukyuId = msg.id });
-                    break;
+                        RefreshTable(msg.shiftId);
+                        break;
+
+                    case "get_conferencia_info":
+                        _authorization.DemandRequest(_currentUser.Id, PermissionActions.View, msg.id);
+                        SendJsonFromSql("get_conferencia_info.sql", new { AcompYukyuId = msg.id });
+                        break;
+                }
+            }
+            catch (UnauthorizedAccessException)
+            {
+                MessageBox.Show(
+                    "Acesso negado para a solicitacao ou setor informado.",
+                    "Acesso negado",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
             }
         }
 
@@ -160,6 +192,18 @@ namespace TeamOps.UI.Forms
             webViewPaidLeave.CoreWebView2.PostWebMessageAsJson(json);
         }
 
+        private void SendPermissions()
+        {
+            var json = JsonSerializer.Serialize(new
+            {
+                type = "paidleave_permissions",
+                canCreate = _authorization.IsAllowed(_currentUser.Id, PermissionActions.Create),
+                canEdit = _authorization.IsAllowed(_currentUser.Id, PermissionActions.Edit),
+                canDelete = _authorization.IsAllowed(_currentUser.Id, PermissionActions.Delete)
+            });
+            webViewPaidLeave.CoreWebView2.PostWebMessageAsJson(json);
+        }
+
         private void ExecuteSql(string sqlFile, object param)
         {
             var sqlPath = Path.Combine(
@@ -174,13 +218,12 @@ namespace TeamOps.UI.Forms
 
         private void RefreshTable(int shiftId)
         {
-            if (shiftId <= 0)
+            var authorizedSectorIds = _authorization.GetAuthorizedSectorIds(_currentUser.Id);
+            SendJsonFromSql("select_all_by_shift.sql", new
             {
-                SendJsonFromSql("select_all.sql");
-                return;
-            }
-
-            SendJsonFromSql("select_all_by_shift.sql", new { ShiftId = shiftId });
+                ShiftId = Math.Max(shiftId, 0),
+                AuthorizedSectorIds = authorizedSectorIds
+            });
         }
 
         private void TryLogSystem(string module, string action, int? targetId = null, string? details = null)

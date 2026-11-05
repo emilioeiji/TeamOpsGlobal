@@ -1,6 +1,7 @@
 let operators = [];
 let requests = [];
 let requestMode = "create";
+let permissions = { canCreate: false, canEdit: false, canDelete: false };
 
 const tooltip = document.getElementById("tooltip");
 const tooltipContent = document.getElementById("tooltipContent");
@@ -85,6 +86,17 @@ window.chrome.webview.addEventListener("message", event => {
 
     if (msg.type === "select_all" || msg.type === "select_all_by_shift") {
         requests = msg.data || [];
+        applyFilters();
+        return;
+    }
+
+    if (msg.type === "paidleave_permissions") {
+        permissions = {
+            canCreate: msg.canCreate === true,
+            canEdit: msg.canEdit === true,
+            canDelete: msg.canDelete === true
+        };
+        document.getElementById("btnAdd").classList.toggle("hidden", !permissions.canCreate);
         applyFilters();
         return;
     }
@@ -223,6 +235,24 @@ function renderTable(items) {
     `;
 
     for (const item of items) {
+        const editButton = permissions.canEdit ? `
+            <button
+                type="button"
+                class="icon-btn icon-btn-edit"
+                onclick="openEditModal(${item.id})"
+                title="Editar"
+                aria-label="Editar solicitação ${item.id}">
+                ${ACTION_ICONS.edit}
+            </button>` : "";
+        const deleteButton = permissions.canDelete ? `
+            <button
+                type="button"
+                class="icon-btn icon-btn-delete"
+                onclick="deleteRequest(${item.id})"
+                title="Excluir"
+                aria-label="Excluir solicitação ${item.id}">
+                ${ACTION_ICONS.delete}
+            </button>` : "";
         html += `
             <tr>
                 <td>${item.operatorName}</td>
@@ -232,8 +262,8 @@ function renderTable(items) {
                     ${item.todokeMotivoName ?? ""}
                 </td>
                 <td class="text-center">
-                    <span class="cursor-pointer"
-                          onclick="toggleTodoke(${item.id})"
+                    <span class="${permissions.canEdit ? "cursor-pointer" : "status-disabled"}"
+                          ${permissions.canEdit ? `onclick="toggleTodoke(${item.id})"` : ""}
                           onmouseenter="requestTodokeInfo(${item.id})"
                           onmouseleave="hideTooltip()">
                         ${item.hasTodoke
@@ -244,8 +274,8 @@ function renderTable(items) {
                 <td class="text-center">
                     ${item.todokeMotivoName === "Yukyu"
                         ? `
-                            <span class="cursor-pointer"
-                                  onclick="toggleFolha(${item.id})"
+                            <span class="${permissions.canEdit ? "cursor-pointer" : "status-disabled"}"
+                                  ${permissions.canEdit ? `onclick="toggleFolha(${item.id})"` : ""}
                                   onmouseenter="requestFolhaInfo(${item.id})"
                                   onmouseleave="hideTooltip()">
                                 ${item.hasFolha
@@ -256,8 +286,8 @@ function renderTable(items) {
                         : "<span class='text-muted'>—</span>"}
                 </td>
                 <td class="text-center">
-                    <span class="${canMarkConferencia(item) ? "cursor-pointer" : "status-disabled"}"
-                          ${canMarkConferencia(item) ? `onclick="toggleConferencia(${item.id})"` : `title="${getConferenciaStatusMessage(item)}"`}
+                    <span class="${permissions.canEdit && canMarkConferencia(item) ? "cursor-pointer" : "status-disabled"}"
+                          ${permissions.canEdit && canMarkConferencia(item) ? `onclick="toggleConferencia(${item.id})"` : `title="${getConferenciaStatusMessage(item)}"`}
                           onmouseenter="requestConferenciaInfo(${item.id})"
                           onmouseleave="hideTooltip()">
                         ${item.hasConferencia
@@ -267,22 +297,8 @@ function renderTable(items) {
                 </td>
                 <td class="text-center actions-cell">
                     <div class="action-buttons">
-                        <button
-                            type="button"
-                            class="icon-btn icon-btn-edit"
-                            onclick="openEditModal(${item.id})"
-                            title="Editar"
-                            aria-label="Editar solicitação ${item.id}">
-                            ${ACTION_ICONS.edit}
-                        </button>
-                        <button
-                            type="button"
-                            class="icon-btn icon-btn-delete"
-                            onclick="deleteRequest(${item.id})"
-                            title="Excluir"
-                            aria-label="Excluir solicitação ${item.id}">
-                            ${ACTION_ICONS.delete}
-                        </button>
+                        ${editButton}
+                        ${deleteButton}
                     </div>
                 </td>
             </tr>
