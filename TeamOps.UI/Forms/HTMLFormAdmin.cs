@@ -10,6 +10,8 @@ using System.Text.Json;
 using System.Windows.Forms;
 using TeamOps.Data.Db;
 using TeamOps.Data.Repositories;
+using TeamOps.Data.Security;
+using TeamOps.Core.Security;
 
 namespace TeamOps.UI.Forms
 {
@@ -17,6 +19,8 @@ namespace TeamOps.UI.Forms
     {
         private readonly SqliteConnectionFactory _factory;
         private readonly Dictionary<string, AdminEntityDefinition> _entities;
+        private readonly AdministrativeScopeService _scopeService;
+        private AdministrativeScope _scope;
 
         public HTMLFormAdmin()
         {
@@ -25,10 +29,15 @@ namespace TeamOps.UI.Forms
             Text = L("Administracao", "\u7ba1\u7406");
 
             _factory = Program.ConnectionFactory;
+            _scopeService = new AdministrativeScopeService(_factory);
+            _scope = _scopeService.GetScope(CurrentUserId);
             _entities = BuildEntities();
 
             InitializeWebView();
         }
+
+        private static int CurrentUserId => Program.CurrentUser?.Id
+            ?? throw new UnauthorizedAccessException("Sessao de usuario indisponivel.");
 
         private async void InitializeWebView()
         {
@@ -37,8 +46,8 @@ namespace TeamOps.UI.Forms
             var core = webViewAdmin.CoreWebView2;
             core.Settings.IsWebMessageEnabled = true;
             core.Settings.AreDefaultScriptDialogsEnabled = true;
-            core.Settings.AreDefaultContextMenusEnabled = true;
-            core.Settings.AreDevToolsEnabled = true;
+            core.Settings.AreDefaultContextMenusEnabled = false;
+            core.Settings.AreDevToolsEnabled = false;
 
             core.WebMessageReceived += WebMessageReceived;
 
@@ -94,6 +103,7 @@ namespace TeamOps.UI.Forms
 
         private void LoadInitial()
         {
+            _scope = _scopeService.GetScope(CurrentUserId);
             PostJson(new
             {
                 type = "init",
@@ -138,6 +148,7 @@ namespace TeamOps.UI.Forms
         {
             using var conn = _factory.CreateOpenConnection();
             EnsureAdminSchema(conn);
+            var authorizedSectorIds = _scope.AuthorizedSectorIds.ToArray();
 
             return new
             {
@@ -150,8 +161,9 @@ namespace TeamOps.UI.Forms
                             COALESCE(NamePt, '') AS labelPt,
                             COALESCE(NULLIF(NameJp, ''), NamePt, '') AS labelJp
                         FROM Sectors
+                        WHERE Id IN @authorizedSectorIds
                         ORDER BY NamePt;"
-                ).ToList(),
+                    , new { authorizedSectorIds }).ToList(),
                 locals = conn.Query(
                     @"
                         SELECT
@@ -166,8 +178,9 @@ namespace TeamOps.UI.Forms
                             COALESCE(NULLIF(s.NameJp, ''), s.NamePt, '') || ' - ' || COALESCE(NULLIF(l.ShortCode, ''), NULLIF(l.NamePt, ''), NULLIF(l.NameJp, ''), 'L' || l.Id) || ' - ' || COALESCE(NULLIF(l.NameJp, ''), l.NamePt, '') AS labelJp
                         FROM Locals l
                         LEFT JOIN Sectors s ON s.Id = l.SectorId
+                        WHERE l.SectorId IN @authorizedSectorIds
                         ORDER BY l.SectorId, l.NamePt, l.Id;"
-                ).ToList(),
+                    , new { authorizedSectorIds }).ToList(),
                 machineActive = new[]
                 {
                     new { id = 1, namePt = "Ativa", nameJp = "稼働", labelPt = "Ativa", labelJp = "稼働" },
@@ -215,6 +228,7 @@ namespace TeamOps.UI.Forms
 
         private void SendEntityRows(string entityKey, JsonElement? root = null)
         {
+            _scope = _scopeService.GetScope(CurrentUserId, PermissionActions.View);
             if (!_entities.TryGetValue(entityKey, out var entity))
                 throw new InvalidOperationException(L("Item administrativo invalido.", "\u7121\u52b9\u306a\u7ba1\u7406\u9805\u76ee\u3067\u3059\u3002"));
 
@@ -222,7 +236,7 @@ namespace TeamOps.UI.Forms
             EnsureAdminSchema(conn);
             var rows = entityKey == "system_log"
                 ? LoadSystemLogRows(conn, root).ToList()
-                : entity.QueryRows(conn).ToList();
+                : FilterRows(entity, entity.QueryRows(conn)).ToList();
 
             PostJson(new
             {
@@ -235,6 +249,35 @@ namespace TeamOps.UI.Forms
                     lookups = BuildLookups()
                 }
             });
+        }
+
+        private IEnumerable<object> FilterRows(AdminEntityDefinition entity, IEnumerable<object> rows)
+        {
+            if (entity.Scope == AdminEntityScope.Global)
+                return _scope.CanManageGlobalCatalogs ? rows : [];
+
+            return rows.Where(row =>
+            {
+                var sectorId = entity.Key == "sector"
+                    ? ReadRowInt(row, "id")
+                    : ReadRowInt(row, "sectorId");
+                return sectorId > 0
+                    ? _scope.ContainsSector(sectorId)
+                    : entity.Scope == AdminEntityScope.SectorOrGlobal && _scope.CanManageGlobalCatalogs;
+            });
+        }
+
+        private static int ReadRowInt(object row, string key)
+        {
+            if (row is IDictionary<string, object> dictionary
+                && dictionary.TryGetValue(key, out var value)
+                && value != null)
+                return Convert.ToInt32(value, CultureInfo.InvariantCulture);
+
+            var property = row.GetType().GetProperty(key,
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.IgnoreCase);
+            var propertyValue = property?.GetValue(row);
+            return propertyValue == null ? 0 : Convert.ToInt32(propertyValue, CultureInfo.InvariantCulture);
         }
 
         private static IEnumerable<object> LoadSystemLogRows(IDbConnection conn, JsonElement? root)
@@ -281,6 +324,7 @@ namespace TeamOps.UI.Forms
 
         private void SaveEntity(string entityKey, JsonElement root)
         {
+            _scope = _scopeService.GetScope(CurrentUserId, PermissionActions.Create);
             if (!_entities.TryGetValue(entityKey, out var entity))
                 throw new InvalidOperationException(L("Item administrativo invalido.", "\u7121\u52b9\u306a\u7ba1\u7406\u9805\u76ee\u3067\u3059\u3002"));
 
@@ -290,8 +334,13 @@ namespace TeamOps.UI.Forms
             using var conn = _factory.CreateOpenConnection();
             EnsureAdminSchema(conn);
             var values = root.GetProperty("values");
+            DemandRequestedScope(conn, entity, values, PermissionActions.Create);
             var parameters = entity.BuildParameters(conn, values, null);
-            conn.Execute(entity.InsertSql, parameters);
+            using var transaction = conn.BeginTransaction();
+            conn.Execute(entity.InsertSql, parameters, transaction);
+            var id = conn.ExecuteScalar<long>("SELECT last_insert_rowid();", transaction: transaction);
+            WriteAdminAudit(conn, transaction, "AdminCreated", entityKey, id);
+            transaction.Commit();
 
             PostJson(new
             {
@@ -304,6 +353,7 @@ namespace TeamOps.UI.Forms
 
         private void UpdateEntity(string entityKey, int id, JsonElement root)
         {
+            _scope = _scopeService.GetScope(CurrentUserId, PermissionActions.Edit);
             if (id <= 0)
                 throw new InvalidOperationException(L("Selecione um registro valido para editar.", "\u7de8\u96c6\u5bfe\u8c61\u306e\u30ec\u30b3\u30fc\u30c9\u3092\u9078\u629e\u3057\u3066\u304f\u3060\u3055\u3044\u3002"));
 
@@ -316,8 +366,14 @@ namespace TeamOps.UI.Forms
             using var conn = _factory.CreateOpenConnection();
             EnsureAdminSchema(conn);
             var values = root.GetProperty("values");
+            DemandExistingScope(conn, entity, id, PermissionActions.Edit);
+            DemandRequestedScope(conn, entity, values, PermissionActions.Edit);
             var parameters = entity.BuildParameters(conn, values, id);
-            conn.Execute(entity.UpdateSql, parameters);
+            using var transaction = conn.BeginTransaction();
+            if (conn.Execute(entity.UpdateSql, parameters, transaction) != 1)
+                throw new InvalidOperationException(L("Registro nao encontrado para atualizacao.", "更新対象が見つかりません。"));
+            WriteAdminAudit(conn, transaction, "AdminUpdated", entityKey, id);
+            transaction.Commit();
 
             PostJson(new
             {
@@ -330,6 +386,7 @@ namespace TeamOps.UI.Forms
 
         private void DeleteEntity(string entityKey, int id)
         {
+            _scope = _scopeService.GetScope(CurrentUserId, PermissionActions.Delete);
             if (id <= 0)
                 throw new InvalidOperationException(L("Selecione um registro valido para excluir.", "\u524a\u9664\u5bfe\u8c61\u306e\u30ec\u30b3\u30fc\u30c9\u3092\u9078\u629e\u3057\u3066\u304f\u3060\u3055\u3044\u3002"));
 
@@ -341,7 +398,12 @@ namespace TeamOps.UI.Forms
 
             using var conn = _factory.CreateOpenConnection();
             EnsureAdminSchema(conn);
-            conn.Execute(entity.DeleteSql, new { id });
+            DemandExistingScope(conn, entity, id, PermissionActions.Delete);
+            using var transaction = conn.BeginTransaction();
+            if (conn.Execute(entity.DeleteSql, new { id }, transaction) != 1)
+                throw new InvalidOperationException(L("Registro nao encontrado para exclusao.", "削除対象が見つかりません。"));
+            WriteAdminAudit(conn, transaction, "AdminDeleted", entityKey, id);
+            transaction.Commit();
 
             PostJson(new
             {
@@ -350,6 +412,88 @@ namespace TeamOps.UI.Forms
             });
 
             SendEntityRows(entityKey);
+        }
+
+        private void DemandRequestedScope(
+            IDbConnection conn,
+            AdminEntityDefinition entity,
+            JsonElement values,
+            string action)
+        {
+            if (entity.Scope == AdminEntityScope.Global)
+            {
+                _scopeService.DemandGlobal(CurrentUserId, action);
+                return;
+            }
+
+            var sectorId = ReadInt(values, "sectorId");
+            var localId = ReadInt(values, "localId");
+            if (localId > 0)
+                sectorId = conn.ExecuteScalar<int?>("SELECT SectorId FROM Locals WHERE Id = @localId;", new { localId }) ?? 0;
+
+            if (sectorId <= 0 && entity.Scope == AdminEntityScope.SectorOrGlobal)
+            {
+                _scopeService.DemandGlobal(CurrentUserId, action);
+                return;
+            }
+
+            _scopeService.DemandSector(CurrentUserId, sectorId, action);
+        }
+
+        private void DemandExistingScope(
+            IDbConnection conn,
+            AdminEntityDefinition entity,
+            int id,
+            string action)
+        {
+            if (entity.Scope == AdminEntityScope.Global)
+            {
+                _scopeService.DemandGlobal(CurrentUserId, action);
+                return;
+            }
+
+            var sectorId = entity.Key switch
+            {
+                "sector" => conn.ExecuteScalar<int?>("SELECT Id FROM Sectors WHERE Id = @id;", new { id }),
+                "local" => conn.ExecuteScalar<int?>("SELECT SectorId FROM Locals WHERE Id = @id;", new { id }),
+                "machine" => conn.ExecuteScalar<int?>("SELECT SectorId FROM Machines WHERE Id = @id;", new { id }),
+                "machine_status" => conn.ExecuteScalar<int?>("SELECT SectorId FROM MachineStatuses WHERE Id = @id;", new { id }),
+                "production_procedure_time" => conn.ExecuteScalar<int?>("SELECT SectorId FROM ProductionProcedureTimes WHERE Id = @id;", new { id }),
+                _ => null
+            };
+
+            if (!sectorId.HasValue)
+            {
+                if (entity.Scope == AdminEntityScope.SectorOrGlobal
+                    && conn.ExecuteScalar<int>("SELECT COUNT(1) FROM MachineStatuses WHERE Id = @id AND SectorId IS NULL;", new { id }) == 1)
+                {
+                    _scopeService.DemandGlobal(CurrentUserId, action);
+                    return;
+                }
+
+                throw new InvalidOperationException(L("Registro administrativo nao encontrado.", "管理レコードが見つかりません。"));
+            }
+
+            _scopeService.DemandSector(CurrentUserId, sectorId.Value, action);
+        }
+
+        private static void WriteAdminAudit(
+            IDbConnection conn,
+            IDbTransaction transaction,
+            string eventType,
+            string entityKey,
+            long id)
+        {
+            conn.Execute(@"
+                INSERT INTO SecurityAudit (ActorUserId, EventType, TargetType, TargetId, Details)
+                VALUES (@actorUserId, @eventType, @entityKey, @targetId, 'Administrative catalog change');",
+                new
+                {
+                    actorUserId = CurrentUserId,
+                    eventType,
+                    entityKey,
+                    targetId = id.ToString(CultureInfo.InvariantCulture)
+                }, transaction);
         }
 
         private Dictionary<string, AdminEntityDefinition> BuildEntities()
@@ -368,24 +512,24 @@ namespace TeamOps.UI.Forms
                     "Agrupamentos de lideranca e leitura de area.",
                     "\u30ea\u30fc\u30c0\u30fc\u30b0\u30eb\u30fc\u30d7\u3068\u30a8\u30ea\u30a2\u8aad\u307f\u53d6\u308a\u306e\u57fa\u790e\u30de\u30b9\u30bf\u3067\u3059\u3002",
                     "Groups"),
-                CreateNameEntity(
+                ConfigureScope(CreateNameEntity(
                     "sector", "core",
                     "Setores", "\u30bb\u30af\u30bf\u30fc",
                     "Setores exibidos nas leituras, filtros e presencas.",
                     "\u8aad\u307f\u53d6\u308a\u3001\u30d5\u30a3\u30eb\u30bf\u3001\u51fa\u5e2d\u7ba1\u7406\u3067\u4f7f\u3046\u30bb\u30af\u30bf\u30fc\u3067\u3059\u3002",
-                    "Sectors"),
-                CreateLocalEntity(),
+                    "Sectors"), AdminEntityScope.Sector, readOnly: true),
+                ConfigureScope(CreateLocalEntity(), AdminEntityScope.Sector),
                 CreateNameEntity(
                     "equipment", "production",
                     "Equipamentos", "\u8a2d\u5099",
                     "Equipamentos vinculados aos cadastros operacionais.",
                     "\u904b\u7528\u7cfb\u30d5\u30a9\u30fc\u30e0\u306b\u7d10\u4ed8\u304f\u8a2d\u5099\u30de\u30b9\u30bf\u3067\u3059\u3002",
                     "Equipments"),
-                CreateMachineEntity(),
-                CreateMachineAuditEntity(),
-                CreateMachineStatusEntity(),
+                ConfigureScope(CreateMachineEntity(), AdminEntityScope.Sector),
+                ConfigureScope(CreateMachineAuditEntity(), AdminEntityScope.SectorOrGlobal, readOnly: true),
+                ConfigureScope(CreateMachineStatusEntity(), AdminEntityScope.SectorOrGlobal),
                 CreatePartCodeStyleEntity(),
-                CreateProductionProcedureTimeEntity(),
+                ConfigureScope(CreateProductionProcedureTimeEntity(), AdminEntityScope.Sector),
                 CreateNameEntity(
                     "category", "production",
                     "Categorias", "\u30ab\u30c6\u30b4\u30ea",
@@ -406,7 +550,19 @@ namespace TeamOps.UI.Forms
                     "FollowUpTypes"),
                 CreateShainEntity(),
                 CreateSystemLogEntity()
-            }.ToDictionary(item => item.Key, StringComparer.OrdinalIgnoreCase);
+            }
+            .Where(item => _scope.CanManageGlobalCatalogs || item.Scope != AdminEntityScope.Global)
+            .ToDictionary(item => item.Key, StringComparer.OrdinalIgnoreCase);
+        }
+
+        private static AdminEntityDefinition ConfigureScope(
+            AdminEntityDefinition entity,
+            AdminEntityScope scope,
+            bool readOnly = false)
+        {
+            entity.Scope = scope;
+            entity.ReadOnly = entity.ReadOnly || readOnly;
+            return entity;
         }
 
         private static AdminEntityDefinition CreatePartCodeStyleEntity()
@@ -1151,6 +1307,7 @@ namespace TeamOps.UI.Forms
                 QueryRows = conn => conn.Query(
                     @"
                         SELECT
+                            COALESCE(m.SectorId, 0) AS sectorId,
                             COALESCE(m.MachineCode, '') AS machineCode,
                             COALESCE(m.LineCode, '') AS lineCode,
                             COALESCE(s.NamePt, '') AS sectorNamePt,
@@ -1451,6 +1608,7 @@ namespace TeamOps.UI.Forms
             public string Key { get; set; } = string.Empty;
             public string Group { get; set; } = string.Empty;
             public bool ReadOnly { get; set; }
+            public AdminEntityScope Scope { get; set; } = AdminEntityScope.Global;
             public string TitlePt { get; set; } = string.Empty;
             public string TitleJp { get; set; } = string.Empty;
             public string DescriptionPt { get; set; } = string.Empty;
@@ -1462,6 +1620,13 @@ namespace TeamOps.UI.Forms
             public string UpdateSql { get; set; } = string.Empty;
             public string DeleteSql { get; set; } = string.Empty;
             public Func<IDbConnection, JsonElement, int?, DynamicParameters> BuildParameters { get; set; } = (_, _, _) => new DynamicParameters();
+        }
+
+        private enum AdminEntityScope
+        {
+            Global,
+            Sector,
+            SectorOrGlobal
         }
 
         private sealed class AdminFieldDefinition
