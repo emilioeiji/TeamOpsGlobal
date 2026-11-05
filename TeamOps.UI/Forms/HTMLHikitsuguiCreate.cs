@@ -1,11 +1,11 @@
 ﻿using Dapper;
 using Microsoft.Web.WebView2.Core;
 using System;
-using System.Configuration;
 using System.IO;
 using System.Text.Json;
 using System.Windows.Forms;
 using TeamOps.Core.Entities;
+using TeamOps.Config;
 using TeamOps.Data.Db;
 using TeamOps.Data.Security;
 using TeamOps.UI.Forms.Models;
@@ -228,11 +228,7 @@ namespace TeamOps.UI.Forms
 
         private static string GetAttachmentRoot()
         {
-            var path = ConfigurationManager.AppSettings["HikitsuguiAttachmentPath"];
-            if (string.IsNullOrWhiteSpace(path))
-                throw new InvalidOperationException("HikitsuguiAttachmentPath não está configurado no app.config.");
-
-            return path;
+            return StoragePathResolver.GetRequiredPath("HikitsuguiAttachmentPath");
         }
     }
 }

@@ -1,5 +1,4 @@
 using System;
-using System.Configuration;
 using System.Globalization;
 using System.Threading;
 using System.Windows.Forms;
@@ -13,8 +12,7 @@ namespace TeamOps.OperatorApp
     {
         public static DbSettings DbSettings { get; private set; } = null!;
         public static SqliteConnectionFactory ConnectionFactory { get; private set; } = null!;
-        public static string AttachmentsFolder =
-            ConfigurationManager.AppSettings["HikitsuguiAttachmentPath"] ?? "";
+        public static string AttachmentsFolder { get; private set; } = string.Empty;
 
         [STAThread]
         static void Main()
@@ -26,7 +24,9 @@ namespace TeamOps.OperatorApp
 
             ApplicationConfiguration.Initialize();
 
-            // LÅEo caminho do banco do app.config
+            AttachmentsFolder = StoragePathResolver.GetRequiredPath("HikitsuguiAttachmentPath");
+
+            // Le o caminho do banco no app.config.
             DbSettings = new DbSettings(portableMode: false);
 
             // Garante que o banco existe

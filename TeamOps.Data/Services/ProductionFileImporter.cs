@@ -8,6 +8,7 @@ using System.Text;
 using System.Threading;
 using Dapper;
 using TeamOps.Core.Entities;
+using TeamOps.Config;
 using TeamOps.Data.Db;
 using TeamOps.Data.Repositories;
 using TeamOps.UI.Forms.Models;
@@ -818,17 +819,12 @@ namespace TeamOps.Services
 
         private static ProductionImportSettings LoadSettings()
         {
-            var eventsDirectory = ConfigurationManager.AppSettings["ProductionEventsDirectory"] ?? string.Empty;
-            var batchPath = ConfigurationManager.AppSettings["ProductionImportBatchPath"] ?? string.Empty;
-            var completionFile = ConfigurationManager.AppSettings["ProductionImportCompletionFile"] ?? string.Empty;
-            var sourceEventsDirectory = ConfigurationManager.AppSettings["ProductionSourceEventsDirectory"] ?? string.Empty;
-            var sourceDatDirectory = ConfigurationManager.AppSettings["ProductionSourceDatDirectory"] ?? string.Empty;
+            var eventsDirectory = StoragePathResolver.GetRequiredPath("ProductionEventsDirectory");
+            var batchPath = StoragePathResolver.GetOptionalPath("ProductionImportBatchPath") ?? string.Empty;
+            var completionFile = StoragePathResolver.GetOptionalPath("ProductionImportCompletionFile") ?? string.Empty;
+            var sourceEventsDirectory = StoragePathResolver.GetOptionalPath("ProductionSourceEventsDirectory") ?? string.Empty;
+            var sourceDatDirectory = StoragePathResolver.GetOptionalPath("ProductionSourceDatDirectory") ?? string.Empty;
             var timeoutSecondsText = ConfigurationManager.AppSettings["ProductionImportTimeoutSeconds"] ?? "180";
-
-            if (string.IsNullOrWhiteSpace(eventsDirectory))
-            {
-                throw new InvalidOperationException("ProductionEventsDirectory nao esta configurado no app.config.");
-            }
 
             Directory.CreateDirectory(eventsDirectory);
 

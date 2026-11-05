@@ -1,7 +1,6 @@
 using ClosedXML.Excel;
 using Microsoft.Web.WebView2.Core;
 using System;
-using System.Configuration;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -9,6 +8,7 @@ using System.Text.Json;
 using System.Windows.Forms;
 using TeamOps.Core.Entities;
 using TeamOps.Core.Security;
+using TeamOps.Config;
 using TeamOps.Data.Db;
 using TeamOps.Data.Repositories;
 using TeamOps.Data.Security;
@@ -187,17 +187,12 @@ namespace TeamOps.UI.Forms
 
         private string GenerateExcel(int documentId, DocumentInput input)
         {
-            var template = ConfigurationManager.AppSettings[_isPr ? "PRTemplate" : "CLTemplate"] ?? string.Empty;
-            var directory = ConfigurationManager.AppSettings[_isPr ? "PRDirectory" : "CLDirectory"] ?? string.Empty;
+            var template = StoragePathResolver.GetRequiredPath(_isPr ? "PRTemplate" : "CLTemplate");
+            var directory = StoragePathResolver.GetRequiredPath(_isPr ? "PRDirectory" : "CLDirectory");
 
             if (string.IsNullOrWhiteSpace(template) || !File.Exists(template))
             {
                 throw new InvalidOperationException(L("Arquivo modelo nao encontrado.", "Template file not found."));
-            }
-
-            if (string.IsNullOrWhiteSpace(directory))
-            {
-                throw new InvalidOperationException(L("Pasta de destino nao configurada.", "Output directory is not configured."));
             }
 
             Directory.CreateDirectory(directory);

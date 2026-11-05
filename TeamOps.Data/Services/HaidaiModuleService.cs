@@ -1,12 +1,12 @@
 using System;
 using System.Collections.Generic;
-using System.Configuration;
 using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
 using Dapper;
+using TeamOps.Config;
 using TeamOps.Data.Db;
 
 namespace TeamOps.UI.Services
@@ -1768,11 +1768,7 @@ namespace TeamOps.UI.Services
         {
             EnsureSchema();
 
-            var exportDirectory = ConfigurationManager.AppSettings["HaidaiExportDirectory"];
-            if (string.IsNullOrWhiteSpace(exportDirectory))
-            {
-                throw new InvalidOperationException("HaidaiExportDirectory nao esta configurado no app.config.");
-            }
+            var exportDirectory = StoragePathResolver.GetRequiredPath("HaidaiExportDirectory");
 
             Directory.CreateDirectory(exportDirectory);
             CopyHaidaiExportAssets(exportDirectory);

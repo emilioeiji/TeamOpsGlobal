@@ -1,8 +1,8 @@
 ﻿using System;
-using System.Configuration;
 using System.Globalization;
 using System.IO;
 using TeamOps.Core.Entities;
+using TeamOps.Config;
 using TeamOps.Data.Repositories;
 
 namespace TeamOps.Services
@@ -18,11 +18,7 @@ namespace TeamOps.Services
 
         public void Import(int sectorId, int shiftId, DateTime date)
         {
-            // Diretório configurado no app.config
-            var baseDir = ConfigurationManager.AppSettings["OperatorScheduleDirectory"];
-
-            if (string.IsNullOrWhiteSpace(baseDir))
-                throw new InvalidOperationException("OperatorScheduleDirectory não está configurado no app.config.");
+            var baseDir = StoragePathResolver.GetRequiredPath("OperatorScheduleDirectory");
 
             // Nome do arquivo: ex: 12-20260406.csv
             string fileName = $"{sectorId}{shiftId}-{date:yyyyMMdd}.csv";

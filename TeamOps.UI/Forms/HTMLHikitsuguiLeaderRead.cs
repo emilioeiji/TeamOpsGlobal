@@ -1,11 +1,11 @@
 ﻿using Dapper;
 using Microsoft.Web.WebView2.Core;
 using System;
-using System.Configuration;
 using System.IO;
 using System.Text.Json;
 using System.Windows.Forms;
 using TeamOps.Core.Common;
+using TeamOps.Config;
 using TeamOps.Core.Entities;
 using TeamOps.Data.Db;
 using TeamOps.Data.Repositories;
@@ -923,9 +923,7 @@ namespace TeamOps.UI.Forms
 
         private string SaveAttachment(int hikitsuguiId, string fileName, string base64)
         {
-            var root = ConfigurationManager.AppSettings["HikitsuguiAttachmentPath"];
-            if (string.IsNullOrWhiteSpace(root))
-                throw new InvalidOperationException("HikitsuguiAttachmentPath não está configurado no app.config.");
+            var root = StoragePathResolver.GetRequiredPath("HikitsuguiAttachmentPath");
 
             var dir = Path.Combine(root, hikitsuguiId.ToString());
 

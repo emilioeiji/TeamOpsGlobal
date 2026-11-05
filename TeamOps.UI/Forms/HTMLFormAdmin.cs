@@ -12,6 +12,7 @@ using TeamOps.Data.Db;
 using TeamOps.Data.Repositories;
 using TeamOps.Data.Security;
 using TeamOps.Core.Security;
+using TeamOps.Config;
 
 namespace TeamOps.UI.Forms
 {
@@ -633,6 +634,7 @@ namespace TeamOps.UI.Forms
                     "FollowUpTypes"),
                 CreateShainEntity(),
                 CreateSecurityAuditEntity(),
+                CreateStorageDiagnosticsEntity(),
                 CreateSystemLogEntity()
             }
             .Where(item => _scope.CanManageGlobalCatalogs || item.Scope != AdminEntityScope.Global)
@@ -770,6 +772,37 @@ namespace TeamOps.UI.Forms
                     ORDER BY occurredAt DESC
                     LIMIT 1000;"),
                 BuildParameters = (_, _, _) => throw new InvalidOperationException("Auditoria somente para leitura.")
+            };
+        }
+
+        private static AdminEntityDefinition CreateStorageDiagnosticsEntity()
+        {
+            return new AdminEntityDefinition
+            {
+                Key = "storage_diagnostics",
+                Group = "misc",
+                ReadOnly = true,
+                TitlePt = "Diagnostico de Armazenamento",
+                TitleJp = "Storage Diagnostics",
+                DescriptionPt = "Caminhos resolvidos, localizacao local ou UNC e disponibilidade atual.",
+                DescriptionJp = "Resolved storage paths, local or UNC location, and current availability.",
+                Columns =
+                {
+                    new AdminColumnDefinition("label", null, "Recurso", "Resource"),
+                    new AdminColumnDefinition("path", null, "Caminho resolvido", "Resolved path"),
+                    new AdminColumnDefinition("location", null, "Localizacao", "Location"),
+                    new AdminColumnDefinition("status", null, "Status", "Status")
+                },
+                QueryRows = _ => new StorageDiagnosticsService().Inspect().Select(item => new
+                {
+                    key = item.Key,
+                    label = item.Label,
+                    path = item.ResolvedPath,
+                    location = item.IsUnc ? "UNC" : "Local",
+                    status = item.Status
+                }),
+                BuildParameters = (_, _, _) => throw new InvalidOperationException(
+                    "O diagnostico de armazenamento e somente leitura.")
             };
         }
 

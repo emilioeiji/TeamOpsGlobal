@@ -2,7 +2,6 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Configuration;
 using System.Data;
 using System.Diagnostics;
 using System.Drawing;
@@ -11,6 +10,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using TeamOps.Core.Entities;
+using TeamOps.Config;
 using TeamOps.Data.Repositories;
 
 namespace TeamOps.UI.Forms
@@ -42,8 +42,8 @@ namespace TeamOps.UI.Forms
             _sectorRepo = sectorRepo;
             _operatorRepo = operatorRepo;
             _currentUser = currentUser;
-            _prDirectory = ConfigurationManager.AppSettings["PRDirectory"]!;
-            _prTemplate = ConfigurationManager.AppSettings["PRTemplate"]!;
+            _prDirectory = StoragePathResolver.GetRequiredPath("PRDirectory");
+            _prTemplate = StoragePathResolver.GetRequiredPath("PRTemplate");
 
             Load += FormPR_Load;
             btnSalvar.Click += btnSalvar_Click;

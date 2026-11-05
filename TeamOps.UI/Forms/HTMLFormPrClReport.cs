@@ -1,7 +1,6 @@
 using Dapper;
 using Microsoft.Web.WebView2.Core;
 using System;
-using System.Configuration;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -11,6 +10,7 @@ using TeamOps.Data.Db;
 using TeamOps.Data.Repositories;
 using TeamOps.Core.Entities;
 using TeamOps.Core.Security;
+using TeamOps.Config;
 using TeamOps.Data.Security;
 
 namespace TeamOps.UI.Forms
@@ -214,7 +214,7 @@ namespace TeamOps.UI.Forms
                     throw new UnauthorizedAccessException(L("Arquivo fora do escopo autorizado.", "File outside the authorized scope."));
             }
 
-            var directory = ConfigurationManager.AppSettings[_isPr ? "PRDirectory" : "CLDirectory"] ?? string.Empty;
+            var directory = StoragePathResolver.GetRequiredPath(_isPr ? "PRDirectory" : "CLDirectory");
             var path = Path.Combine(directory, fileName);
             if (!File.Exists(path))
             {

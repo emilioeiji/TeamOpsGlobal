@@ -10,6 +10,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Dapper;
+using TeamOps.Config;
 using TeamOps.Core.Entities;
 using TeamOps.Data.Db;
 using TeamOps.Data.Repositories;
@@ -1559,7 +1560,7 @@ namespace TeamOps.Services
         }
         private static Ec2ImportSettings LoadSettings()
         {
-            var filePath = ConfigurationManager.AppSettings["Ec2AdministratorFilePath"] ?? string.Empty;
+            var filePath = StoragePathResolver.GetOptionalPath("Ec2AdministratorFilePath") ?? string.Empty;
             var ignoreAfterText = ConfigurationManager.AppSettings["MachineStoppedIgnoreAfterMinutes"] ?? "0";
             var keywordsText = ConfigurationManager.AppSettings["Ec2AdministratorRunningStatusKeywords"]
                 ?? "operando,rodando,running,run,\u7A3C\u50CD,\u904B\u8EE2,\u7A3C\u50CD\u4E2D,\u904B\u8EE2\u4E2D";
