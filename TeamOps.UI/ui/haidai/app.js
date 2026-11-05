@@ -6,6 +6,12 @@ const state = {
     sectors: [],
     locals: [],
     operators: [],
+    sharedSectorTopology: {
+        isEnabled: false,
+        gBareruSectorId: 0,
+        dadSectorId: 0,
+        gdadSectorId: 0
+    },
     monthPlan: null,
     board: null,
     selectedOperatorCodigoFJ: "",
@@ -196,6 +202,12 @@ function hydrateInit(data) {
     state.sectors = data.sectors || [];
     state.locals = data.locals || [];
     state.operators = data.operators || [];
+    state.sharedSectorTopology = {
+        isEnabled: data.sharedSectorTopology?.isEnabled === true,
+        gBareruSectorId: Number(data.sharedSectorTopology?.gBareruSectorId || 0),
+        dadSectorId: Number(data.sharedSectorTopology?.dadSectorId || 0),
+        gdadSectorId: Number(data.sharedSectorTopology?.gdadSectorId || 0)
+    };
 
     document.getElementById("lblUser").textContent = state.currentUser;
     document.getElementById("lblOperator").textContent = state.currentOperatorName;
@@ -795,8 +807,7 @@ function renderReplacementCandidates() {
         .filter(item => item.codigoFJ !== currentOperatorCodigoFJ)
         .filter(item => shiftId <= 0 || Number(item.shiftId || 0) === shiftId)
         .filter(item => {
-            const homeSectorId = Number(item.sectorId || 0);
-            return sectorId <= 0 || homeSectorId === sectorId || homeSectorId === 3;
+            return sectorId <= 0 || isOperatorVisibleInSector(item, sectorId);
         })
         .filter(item => {
             if (!search) {
@@ -1079,11 +1090,7 @@ function sortMonthOperatorsForSelectedDay(operators) {
 function buildLocalOptions(operatorCodigoFJ, sectorId, selectedId) {
     const options = [`<option value="">Sem area definida</option>`];
     const allowedSectorIds = getAllowedLocalSectorIdsForOperator(operatorCodigoFJ, sectorId);
-    const locals = state.locals.filter(item => {
-        return allowedSectorIds.includes(Number(item.sectorId))
-            && Number(item.id) !== 97
-            && Number(item.id) !== 98;
-    });
+    const locals = state.locals.filter(item => allowedSectorIds.includes(Number(item.sectorId)));
 
     locals.forEach(local => {
         options.push(
@@ -1204,21 +1211,33 @@ function findOperatorMeta(codigoFJ) {
 }
 
 function isSharedSupportSector(sectorId) {
-    return Number(sectorId) === 1 || Number(sectorId) === 2;
+    if (!state.sharedSectorTopology.isEnabled) {
+        return false;
+    }
+
+    const normalizedSectorId = Number(sectorId);
+    return normalizedSectorId === state.sharedSectorTopology.gBareruSectorId
+        || normalizedSectorId === state.sharedSectorTopology.dadSectorId;
 }
 
 function isOperatorVisibleInSector(operator, sectorId) {
     const normalizedSectorId = Number(sectorId);
     const operatorSectorId = Number(operator?.sectorId || 0);
     return operatorSectorId === normalizedSectorId
-        || (isSharedSupportSector(normalizedSectorId) && operatorSectorId === 3);
+        || (isSharedSupportSector(normalizedSectorId)
+            && operatorSectorId === state.sharedSectorTopology.gdadSectorId);
 }
 
 function getAllowedLocalSectorIdsForOperator(operatorCodigoFJ, sectorId) {
     const normalizedSectorId = Number(sectorId);
     const operatorMeta = findOperatorMeta(operatorCodigoFJ);
-    if (Number(operatorMeta?.sectorId || 0) === 3 || normalizedSectorId === 3) {
-        return [1, 2];
+    if (state.sharedSectorTopology.isEnabled
+        && (Number(operatorMeta?.sectorId || 0) === state.sharedSectorTopology.gdadSectorId
+            || normalizedSectorId === state.sharedSectorTopology.gdadSectorId)) {
+        return [
+            state.sharedSectorTopology.gBareruSectorId,
+            state.sharedSectorTopology.dadSectorId
+        ];
     }
 
     return [normalizedSectorId];

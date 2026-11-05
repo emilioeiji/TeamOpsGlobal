@@ -18,6 +18,7 @@ namespace TeamOps.UI.Forms
     {
         private readonly User _currentUser;
         private readonly Operator _currentOperator;
+        private readonly SqliteConnectionFactory _factory;
         private readonly HaidaiModuleService _service;
         private readonly AuthorizationService _authorization;
         private readonly Microsoft.Web.WebView2.WinForms.WebView2 _webView;
@@ -29,6 +30,7 @@ namespace TeamOps.UI.Forms
         {
             _currentUser = currentUser;
             _currentOperator = currentOperator;
+            _factory = factory;
             _service = new HaidaiModuleService(factory);
             _authorization = new AuthorizationService(factory);
 
@@ -111,7 +113,9 @@ namespace TeamOps.UI.Forms
                         var clearShiftId = ReadInt(root, "shiftId");
                         var clearSectorId = ReadInt(root, "sectorId");
                         Demand(PermissionActions.Edit, clearSectorId);
-                        _service.ClearException(clearDate, ReadString(root, "operatorCodigoFJ"));
+                        var clearOperatorCodigoFJ = ReadString(root, "operatorCodigoFJ");
+                        DemandOperator(PermissionActions.Edit, clearOperatorCodigoFJ);
+                        _service.ClearException(clearDate, clearOperatorCodigoFJ);
                         SendBoard(clearDate, clearShiftId, clearSectorId);
                         SendMonthlyPlan(clearDate.Year, clearDate.Month, clearShiftId, clearSectorId);
                         PostNotify(L("Excecao removida.", "Exception cleared."));
@@ -130,6 +134,7 @@ namespace TeamOps.UI.Forms
                         var restoreShiftId = ReadInt(root, "shiftId");
                         var restoreSectorId = ReadInt(root, "sectorId");
                         Demand(PermissionActions.Edit, restoreSectorId);
+                        DemandOperator(PermissionActions.Edit, ReadString(root, "operatorCodigoFJ"));
                         _service.RestoreLineup(
                             restoreDate,
                             restoreShiftId,
@@ -164,6 +169,13 @@ namespace TeamOps.UI.Forms
                     ? _currentOperator.SectorId
                     : authorizedSectorIds.FirstOrDefault());
             var init = _service.GetInitialPayload(_currentOperator.ShiftId, defaultSectorId);
+            var sharedTopologyEnabled = init.SharedSectorTopology.IsEnabled
+                && init.SharedSectorTopology.GBareruSectorId.HasValue
+                && init.SharedSectorTopology.DadSectorId.HasValue
+                && init.SharedSectorTopology.GdadSectorId.HasValue
+                && authorizedSectorIds.Contains(init.SharedSectorTopology.GBareruSectorId.Value)
+                && authorizedSectorIds.Contains(init.SharedSectorTopology.DadSectorId.Value)
+                && authorizedSectorIds.Contains(init.SharedSectorTopology.GdadSectorId.Value);
 
             PostJson(new
             {
@@ -173,6 +185,13 @@ namespace TeamOps.UI.Forms
                     locale = Program.CurrentLocale,
                     currentUser = _currentUser.Name,
                     currentOperatorName = _currentOperator.NameRomanji,
+                    sharedSectorTopology = new
+                    {
+                        isEnabled = sharedTopologyEnabled,
+                        gBareruSectorId = init.SharedSectorTopology.GBareruSectorId,
+                        dadSectorId = init.SharedSectorTopology.DadSectorId,
+                        gdadSectorId = init.SharedSectorTopology.GdadSectorId
+                    },
                     defaults = new
                     {
                         dateIso = init.DateIso,
@@ -224,7 +243,12 @@ namespace TeamOps.UI.Forms
 
             Demand(PermissionActions.View, sectorId);
 
-            var plan = _service.GetMonthlyPlan(year, month, shiftId, sectorId);
+            var plan = _service.GetMonthlyPlan(
+                year,
+                month,
+                shiftId,
+                sectorId,
+                _authorization.GetContext(_currentUser.Id).AuthorizedSectorIds);
 
             PostJson(new
             {
@@ -279,7 +303,11 @@ namespace TeamOps.UI.Forms
 
             Demand(PermissionActions.View, sectorId);
 
-            var board = _service.GetBoard(date, shiftId, sectorId);
+            var board = _service.GetBoard(
+                date,
+                shiftId,
+                sectorId,
+                _authorization.GetContext(_currentUser.Id).AuthorizedSectorIds);
 
             PostJson(new
             {
@@ -383,7 +411,9 @@ namespace TeamOps.UI.Forms
                 }
             }
 
-            _service.SaveMonthlyPlan(new HaidaiMonthlySaveRequest(year, month, shiftId, sectorId, cells));
+            _service.SaveMonthlyPlan(
+                new HaidaiMonthlySaveRequest(year, month, shiftId, sectorId, cells),
+                _authorization.GetContext(_currentUser.Id).AuthorizedSectorIds);
             SendMonthlyPlan(year, month, shiftId, sectorId);
             SendBoard(ReadDate(root, "selectedDate"), shiftId, sectorId);
             PostNotify(L("Plano mensal salvo.", "Monthly plan saved."));
@@ -410,7 +440,8 @@ namespace TeamOps.UI.Forms
                     ReadBool(root, "countsTowardKousu", true),
                     ReadString(root, "notes"),
                     ReadBool(root, "isHolidayWork"),
-                    ReadBool(root, "applyPairToMonth")));
+                    ReadBool(root, "applyPairToMonth")),
+                _authorization.GetContext(_currentUser.Id).AuthorizedSectorIds);
 
             SendBoard(date, shiftId, sectorId);
             SendMonthlyPlan(date.Year, date.Month, shiftId, sectorId);
@@ -427,6 +458,7 @@ namespace TeamOps.UI.Forms
             var shiftId = ReadInt(root, "shiftId");
             var sectorId = ReadInt(root, "sectorId");
             Demand(PermissionActions.Edit, sectorId);
+            DemandOperator(PermissionActions.Edit, ReadString(root, "operatorCodigoFJ"));
             if (motiveId != 1 && motiveId != 2)
             {
                 throw new InvalidOperationException(L("Motivo invalido.", "Invalid motive."));
@@ -454,6 +486,11 @@ namespace TeamOps.UI.Forms
             var shiftId = ReadInt(root, "shiftId");
             var sectorId = ReadInt(root, "sectorId");
             Demand(PermissionActions.Edit, sectorId);
+            DemandOperator(PermissionActions.Edit, ReadString(root, "operatorCodigoFJ"));
+            var replacementOperatorCodigoFJ = ReadString(root, "replacementOperatorCodigoFJ");
+            if (!string.IsNullOrWhiteSpace(replacementOperatorCodigoFJ))
+                DemandOperator(PermissionActions.Edit, replacementOperatorCodigoFJ);
+            DemandLocal(PermissionActions.Edit, ReadNullableInt(root, "localId"));
             if (movementType != "late" && movementType != "early_leave")
             {
                 throw new InvalidOperationException(L("Movimento invalido.", "Invalid movement."));
@@ -468,7 +505,7 @@ namespace TeamOps.UI.Forms
                     ReadNullableInt(root, "movementId"),
                     movementType,
                     ReadString(root, "eventTime"),
-                    ReadString(root, "replacementOperatorCodigoFJ"),
+                    replacementOperatorCodigoFJ,
                     ReadNullableInt(root, "localId"),
                     ReadString(root, "assignmentCode"),
                     ReadString(root, "pairKey"),
@@ -489,6 +526,7 @@ namespace TeamOps.UI.Forms
             var shiftId = ReadInt(root, "shiftId");
             var sectorId = ReadInt(root, "sectorId");
             Demand(PermissionActions.Edit, sectorId);
+            DemandOperator(PermissionActions.Edit, ReadString(root, "operatorCodigoFJ"));
             var movementId = ReadInt(root, "movementId");
             if (movementId <= 0)
             {
@@ -513,7 +551,8 @@ namespace TeamOps.UI.Forms
             Demand(PermissionActions.Export, sectorId);
             var result = _service.ExportSector(
                 ReadDate(root, "date"),
-                sectorId);
+                sectorId,
+                _authorization.GetContext(_currentUser.Id).AuthorizedSectorIds);
 
             PostJson(new
             {
@@ -546,6 +585,36 @@ namespace TeamOps.UI.Forms
                 ModuleCodes.Haidai,
                 action,
                 sectorId);
+        }
+
+        private void DemandOperator(string action, string codigoFJ)
+        {
+            using var conn = _factory.CreateOpenConnection();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT SectorId
+                FROM Operators
+                WHERE CodigoFJ = @codigoFJ
+                  AND Status = 1
+                LIMIT 1;";
+            cmd.Parameters.AddWithValue("@codigoFJ", codigoFJ?.Trim() ?? string.Empty);
+            var value = cmd.ExecuteScalar()
+                ?? throw new InvalidOperationException(L("Operador nao encontrado.", "Operator not found."));
+            Demand(action, Convert.ToInt32(value));
+        }
+
+        private void DemandLocal(string action, int? localId)
+        {
+            if (!localId.HasValue || localId.Value <= 0)
+                return;
+
+            using var conn = _factory.CreateOpenConnection();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT SectorId FROM Locals WHERE Id = @localId LIMIT 1;";
+            cmd.Parameters.AddWithValue("@localId", localId.Value);
+            var value = cmd.ExecuteScalar()
+                ?? throw new InvalidOperationException(L("Local nao encontrado.", "Location not found."));
+            Demand(action, Convert.ToInt32(value));
         }
 
         private void PostJson(object payload)
