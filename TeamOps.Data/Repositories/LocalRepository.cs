@@ -55,21 +55,13 @@ namespace TeamOps.Data.Repositories
             using var conn = _factory.CreateOpenConnection();
             using var cmd = conn.CreateCommand();
 
-            if (sectorId == 3)
-            {
-                // Setor 3 vê tudo
-                cmd.CommandText = "SELECT Id, NamePt, NameJp, SectorId FROM Locals ORDER BY NamePt";
-            }
-            else
-            {
-                cmd.CommandText = @"
+            cmd.CommandText = @"
             SELECT Id, NamePt, NameJp, SectorId 
             FROM Locals 
             WHERE SectorId = @sectorId
             ORDER BY NamePt";
 
-                cmd.Parameters.AddWithValue("@sectorId", sectorId);
-            }
+            cmd.Parameters.AddWithValue("@sectorId", sectorId);
 
             using var reader = cmd.ExecuteReader();
             while (reader.Read())

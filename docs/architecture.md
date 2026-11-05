@@ -52,7 +52,7 @@ Camada de persistencia. Contem:
 - `ProductionSchemaMigrator`.
 - Repositorios por agregado/tabela.
 - SQL externo em `Sql/Hikitsugui`, `Sql/paidleave` e `Sql/presence`.
-- Migrations em `Migrations/InitialSchema.sql` e `Migrations/ProductionMonitor_Upgrade.sql`.
+- Migrations versionadas do Schema V2 e evolucao idempotente do monitor por `ProductionSchemaMigrator`.
 
 ### TeamOps.Config
 
@@ -175,7 +175,7 @@ Repositorios usam `SqliteConnectionFactory` e Dapper ou comandos `Microsoft.Data
 
 ## Migrations e schema
 
-`InitialSchema.sql` cria as tabelas base. `ProductionMonitor_Upgrade.sql` adiciona campos e tabelas do monitor de producao. `ProductionSchemaMigrator.Ensure` tambem protege a evolucao do schema do monitor quando a importacao/consulta de producao roda.
+`InitialSchema.sql` cria as tabelas operacionais base. As migrations `V2_*` evoluem organizacao, identidade, audiencias e escopos. `ProductionSchemaMigrator.Ensure` e a fonte unica para evolucao idempotente do monitor de producao; scripts historicos duplicados foram removidos.
 
 ## Dependencias externas
 

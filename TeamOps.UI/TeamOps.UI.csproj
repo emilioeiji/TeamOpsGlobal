@@ -69,7 +69,6 @@
     <Compile Update="Forms\FormHikitsuguiPreview.cs">
       <SubType>Form</SubType>
     </Compile>
-    <Compile Update="Forms\FormCL.cs" />
   </ItemGroup>
 
   <ItemGroup>

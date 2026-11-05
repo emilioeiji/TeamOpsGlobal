@@ -570,14 +570,7 @@ VALUES
  (NULL, 0, 0, 'Running', 'Rodando', '稼働中', '#5B88E8', '#FFFFFF', 0, 1),
 (NULL, 1, 1, 'StopCounts', 'Inativo', '非稼働', '#EF6F63', '#FFFFFF', 1, 1),
 (NULL, 3, 3, 'StopCounts', 'Parado', '停止', '#F2CB58', '#4A3200', 3, 1),
-(NULL, 4, 4, 'Error', 'Erro', 'エラー', '#FFFFFF', '#516174', 4, 1),
-(2, 0, 0, 'Running', 'Rodando', '運転', '#5B88E8', '#FFFFFF', 0, 1),
-(2, 1, 3, 'StopCounts', 'Parado DAD', '停止中', '#F2CB58', '#4A3200', 1, 1),
-(2, 3, 3, 'StopNoCount', 'Limpeza programada', '清掃', '#8EC5A8', '#123524', 3, 1),
-(2, 4, 4, 'Error', 'Erro', '異常', '#FFFFFF', '#516174', 4, 1),
-(2, 17, 1, 'StopNoCount', 'Intervalo', 'レス処理', '#8EC5A8', '#123524', 17, 1),
-(2, 18, 1, 'StopNoCount', 'Limpeza programada', '吸引時間', '#8EC5A8', '#123524', 18, 1),
-(2, 19, 1, 'StopNoCount', 'Amostra', 'サンプル', '#8EC5A8', '#123524', 19, 1);
+(NULL, 4, 4, 'Error', 'Erro', 'エラー', '#FFFFFF', '#516174', 4, 1);
 
 CREATE INDEX IF NOT EXISTS IX_Operators_BadgeCode ON Operators(BadgeCode);
 CREATE INDEX IF NOT EXISTS IX_GL_Login ON GroupLeaders(Login);

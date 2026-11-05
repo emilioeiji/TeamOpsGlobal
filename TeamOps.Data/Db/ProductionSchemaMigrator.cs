@@ -707,36 +707,38 @@ namespace TeamOps.Data.Db
 
         private static void NormalizeKnownMachineStatusLabels(IDbConnection conn)
         {
+            var gBareruSectorId = ResolveSectorId(conn, "G-BARERU");
+            var dadSectorId = ResolveSectorId(conn, "DAD");
             conn.Execute(
                 @"
                     UPDATE MachineStatuses
                     SET NameJp = '稼働中', NamePt = 'Rodando', DisplayCode = 0, Classification = 'Running'
-                    WHERE (SectorId IS NULL OR SectorId = 1)
+                    WHERE (SectorId IS NULL OR SectorId = @GBareruSectorId)
                       AND StatusCode = 0;
 
                     UPDATE MachineStatuses
                     SET NameJp = '停止中'
-                    WHERE SectorId = 1
+                    WHERE SectorId = @GBareruSectorId
                       AND StatusCode = 1;
 
                     UPDATE MachineStatuses
                     SET NameJp = 'レス処理'
-                    WHERE SectorId = 1
+                    WHERE SectorId = @GBareruSectorId
                       AND StatusCode IN (2, 17);
 
                     UPDATE MachineStatuses
                     SET NameJp = '停止中', DisplayCode = 3
-                    WHERE SectorId = 1
+                    WHERE SectorId = @GBareruSectorId
                       AND StatusCode = 3;
 
                     UPDATE MachineStatuses
                     SET NameJp = '吸引時間'
-                    WHERE SectorId = 1
+                    WHERE SectorId = @GBareruSectorId
                       AND StatusCode = 18;
 
                     UPDATE MachineStatuses
                     SET NameJp = 'サンプル'
-                    WHERE SectorId = 1
+                    WHERE SectorId = @GBareruSectorId
                       AND StatusCode = 19;
 
                     UPDATE MachineStatuses
@@ -756,38 +758,39 @@ namespace TeamOps.Data.Db
 
                     UPDATE MachineStatuses
                     SET NameJp = '運転'
-                    WHERE SectorId = 2
+                    WHERE SectorId = @DadSectorId
                       AND StatusCode = 0;
 
                     UPDATE MachineStatuses
                     SET NameJp = '停止中'
-                    WHERE SectorId = 2
+                    WHERE SectorId = @DadSectorId
                       AND StatusCode = 1;
 
                     UPDATE MachineStatuses
                     SET NameJp = '清掃'
-                    WHERE SectorId = 2
+                    WHERE SectorId = @DadSectorId
                       AND StatusCode = 3;
 
                     UPDATE MachineStatuses
                     SET NameJp = '異常'
-                    WHERE SectorId = 2
+                    WHERE SectorId = @DadSectorId
                       AND StatusCode = 4;
 
                     UPDATE MachineStatuses
                     SET NameJp = 'レス処理'
-                    WHERE SectorId = 2
+                    WHERE SectorId = @DadSectorId
                       AND StatusCode = 17;
 
                     UPDATE MachineStatuses
                     SET NameJp = '吸引時間'
-                    WHERE SectorId = 2
+                    WHERE SectorId = @DadSectorId
                       AND StatusCode = 18;
 
                     UPDATE MachineStatuses
                     SET NameJp = 'サンプル'
-                    WHERE SectorId = 2
+                    WHERE SectorId = @DadSectorId
                       AND StatusCode = 19;"
+                , new { GBareruSectorId = gBareruSectorId, DadSectorId = dadSectorId }
             );
         }
 
@@ -807,18 +810,20 @@ namespace TeamOps.Data.Db
 
         private static void SeedDadMachineStatuses(IDbConnection conn)
         {
+            var dadSectorId = ResolveSectorId(conn, "DAD");
             conn.Execute(
                 @"
                     INSERT OR IGNORE INTO MachineStatuses
                     (SectorId, StatusCode, DisplayCode, Classification, NamePt, NameJp, ColorHex, TextColorHex, SortOrder, IsActive)
                     VALUES
-                    (2, 0, 0, 'Running', 'Rodando', '運転', '#5B88E8', '#FFFFFF', 0, 1),
-                    (2, 1, 3, 'StopCounts', 'Parado DAD', '停止中', '#F2CB58', '#4A3200', 1, 1),
-                    (2, 3, 3, 'StopNoCount', 'Limpeza programada', '清掃', '#8EC5A8', '#123524', 3, 1),
-                    (2, 4, 4, 'Error', 'Erro', '異常', '#FFFFFF', '#516174', 4, 1),
-                    (2, 17, 1, 'StopNoCount', 'Intervalo', 'レス処理', '#8EC5A8', '#123524', 17, 1),
-                    (2, 18, 1, 'StopNoCount', 'Limpeza programada', '吸引時間', '#8EC5A8', '#123524', 18, 1),
-                    (2, 19, 1, 'StopNoCount', 'Amostra', 'サンプル', '#8EC5A8', '#123524', 19, 1);"
+                    (@DadSectorId, 0, 0, 'Running', 'Rodando', '運転', '#5B88E8', '#FFFFFF', 0, 1),
+                    (@DadSectorId, 1, 3, 'StopCounts', 'Parado DAD', '停止中', '#F2CB58', '#4A3200', 1, 1),
+                    (@DadSectorId, 3, 3, 'StopNoCount', 'Limpeza programada', '清掃', '#8EC5A8', '#123524', 3, 1),
+                    (@DadSectorId, 4, 4, 'Error', 'Erro', '異常', '#FFFFFF', '#516174', 4, 1),
+                    (@DadSectorId, 17, 1, 'StopNoCount', 'Intervalo', 'レス処理', '#8EC5A8', '#123524', 17, 1),
+                    (@DadSectorId, 18, 1, 'StopNoCount', 'Limpeza programada', '吸引時間', '#8EC5A8', '#123524', 18, 1),
+                    (@DadSectorId, 19, 1, 'StopNoCount', 'Amostra', 'サンプル', '#8EC5A8', '#123524', 19, 1);",
+                new { DadSectorId = dadSectorId }
             );
 
             NormalizeDadMachineStatusSeeds(conn);
@@ -837,6 +842,7 @@ namespace TeamOps.Data.Db
 
         private static void NormalizeDadMachineStatusSeeds(IDbConnection conn)
         {
+            var dadSectorId = ResolveSectorId(conn, "DAD");
             conn.Execute(
                 @"
                     UPDATE MachineStatuses
@@ -847,7 +853,7 @@ namespace TeamOps.Data.Db
                         ColorHex = CASE WHEN trim(COALESCE(ColorHex, '')) = '' THEN '#5B88E8' ELSE ColorHex END,
                         TextColorHex = CASE WHEN trim(COALESCE(TextColorHex, '')) = '' THEN '#FFFFFF' ELSE TextColorHex END,
                         IsActive = 1
-                    WHERE SectorId = 2 AND StatusCode = 0;
+                    WHERE SectorId = @DadSectorId AND StatusCode = 0;
 
                     UPDATE MachineStatuses
                     SET
@@ -857,7 +863,7 @@ namespace TeamOps.Data.Db
                         ColorHex = CASE WHEN trim(COALESCE(ColorHex, '')) = '' THEN '#F2CB58' ELSE ColorHex END,
                         TextColorHex = CASE WHEN trim(COALESCE(TextColorHex, '')) = '' THEN '#4A3200' ELSE TextColorHex END,
                         IsActive = 1
-                    WHERE SectorId = 2 AND StatusCode = 1;
+                    WHERE SectorId = @DadSectorId AND StatusCode = 1;
 
                     UPDATE MachineStatuses
                     SET
@@ -867,7 +873,7 @@ namespace TeamOps.Data.Db
                         ColorHex = CASE WHEN trim(COALESCE(ColorHex, '')) = '' THEN '#8EC5A8' ELSE ColorHex END,
                         TextColorHex = CASE WHEN trim(COALESCE(TextColorHex, '')) = '' THEN '#123524' ELSE TextColorHex END,
                         IsActive = 1
-                    WHERE SectorId = 2 AND StatusCode = 3;
+                    WHERE SectorId = @DadSectorId AND StatusCode = 3;
 
                     UPDATE MachineStatuses
                     SET
@@ -877,7 +883,7 @@ namespace TeamOps.Data.Db
                         ColorHex = CASE WHEN trim(COALESCE(ColorHex, '')) = '' THEN '#FFFFFF' ELSE ColorHex END,
                         TextColorHex = CASE WHEN trim(COALESCE(TextColorHex, '')) = '' THEN '#516174' ELSE TextColorHex END,
                         IsActive = 1
-                    WHERE SectorId = 2 AND StatusCode = 4;
+                    WHERE SectorId = @DadSectorId AND StatusCode = 4;
 
                     UPDATE MachineStatuses
                     SET
@@ -886,8 +892,21 @@ namespace TeamOps.Data.Db
                         ColorHex = CASE WHEN trim(COALESCE(ColorHex, '')) = '' THEN '#8EC5A8' ELSE ColorHex END,
                         TextColorHex = CASE WHEN trim(COALESCE(TextColorHex, '')) = '' THEN '#123524' ELSE TextColorHex END,
                         IsActive = 1
-                    WHERE SectorId = 2 AND StatusCode IN (17, 18, 19);"
+                    WHERE SectorId = @DadSectorId AND StatusCode IN (17, 18, 19);",
+                new { DadSectorId = dadSectorId }
             );
+        }
+
+        private static int ResolveSectorId(IDbConnection conn, string code)
+        {
+            return conn.QuerySingleOrDefault<int?>(
+                    @"SELECT Id
+                      FROM Sectors
+                      WHERE Code = @Code COLLATE NOCASE
+                        AND IsActive = 1
+                      LIMIT 1;",
+                    new { Code = code })
+                ?? throw new InvalidOperationException($"Setor {code} nao configurado.");
         }
     }
 }

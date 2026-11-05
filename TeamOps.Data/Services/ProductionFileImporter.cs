@@ -25,6 +25,7 @@ namespace TeamOps.Services
         private readonly ProductionEventRepository _eventRepository;
         private readonly ProductionPlanDatImporter _planImporter;
         private readonly Ec2AdministratorImporter _ec2Importer;
+        private readonly ProductionSectorIds _sectorIds;
 
         public ProductionFileImporter(
             SqliteConnectionFactory factory,
@@ -34,8 +35,9 @@ namespace TeamOps.Services
             _factory = factory;
             _machineRepository = machineRepository;
             _eventRepository = eventRepository;
+            _sectorIds = ProductionSectorIds.Load(factory);
             _planImporter = new ProductionPlanDatImporter();
-            _ec2Importer = new Ec2AdministratorImporter(factory, machineRepository);
+            _ec2Importer = new Ec2AdministratorImporter(factory, machineRepository, _sectorIds);
         }
 
         public ProductionImportResult ImportLatest(ProductionImportOptions? options = null)
@@ -103,7 +105,7 @@ namespace TeamOps.Services
             result.PerformanceMs["ReadFiles"] = readElapsed;
             result.PerformanceMs["Parse"] = parseElapsed;
             var dadParsedRows = parsedRows
-                .Where(row => row.SectorId == 2)
+                .Where(row => row.SectorId == _sectorIds.Dad)
                 .ToList();
             result.DadRowsParsed = dadParsedRows.Count;
             result.DadMachinesFound = dadParsedRows
@@ -253,7 +255,7 @@ namespace TeamOps.Services
                 catch (Exception ex)
                 {
                     result.Ignored++;
-                    if (parsed.SectorId == 2)
+                    if (parsed.SectorId == _sectorIds.Dad)
                     {
                         result.DadLinkErrors++;
                         AddDadDiagnostic(
@@ -278,7 +280,7 @@ namespace TeamOps.Services
             {
                 result.Ignored += candidates.Count - affected;
             }
-            TrackDadImportedCandidates(result, candidates);
+            TrackDadImportedCandidates(result, candidates, _sectorIds.Dad);
             foreach (var machineId in candidates.Select(item => item.MachineId).Distinct())
             {
                 touchedMachineIds.Add(machineId);
@@ -415,7 +417,7 @@ namespace TeamOps.Services
                 || text.Contains("æ", StringComparison.Ordinal);
         }
 
-        private static bool TryParseLine(
+        private bool TryParseLine(
             string filePath,
             string line,
             out ParsedLine parsed,
@@ -534,16 +536,16 @@ namespace TeamOps.Services
 
             return 1;
         }
-        private static int? ResolveSectorId(string lineCode)
+        private int? ResolveSectorId(string lineCode)
         {
             if (TextComparer.Equals(lineCode, "211D"))
             {
-                return 2;
+                return _sectorIds.Dad;
             }
 
             if (TextComparer.Equals(lineCode, "2400"))
             {
-                return 1;
+                return _sectorIds.GBareru;
             }
 
             return null;
@@ -590,10 +592,13 @@ namespace TeamOps.Services
             AddDadDiagnostic(result, $"DAD_IGNORED File={Path.GetFileName(filePath)} Machine={machineCode} Reason={reason}");
         }
 
-        private static void TrackDadImportedCandidates(ProductionImportResult result, IReadOnlyList<MachineEvent> candidates)
+        private static void TrackDadImportedCandidates(
+            ProductionImportResult result,
+            IReadOnlyList<MachineEvent> candidates,
+            int dadSectorId)
         {
             var dadCandidates = candidates
-                .Where(item => item.SectorId == 2)
+                .Where(item => item.SectorId == dadSectorId)
                 .ToList();
 
             result.DadRowsImported = dadCandidates.Count;

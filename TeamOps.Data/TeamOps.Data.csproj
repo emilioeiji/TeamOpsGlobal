@@ -34,15 +34,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="Migrations\ProductionMonitor_Upgrade.sql">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="Migrations\ProductionMonitor_StatusBySector.sql">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="Migrations\ProductionMonitor_GBareruCapacityForecast.sql">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
     <None Update="Migrations\Presence_PerformanceIndexes.sql">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

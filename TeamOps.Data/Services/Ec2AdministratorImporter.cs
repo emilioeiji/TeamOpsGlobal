@@ -23,13 +23,16 @@ namespace TeamOps.Services
 
         private readonly SqliteConnectionFactory _factory;
         private readonly ProductionMachineRepository _machineRepository;
+        private readonly ProductionSectorIds _sectorIds;
 
         public Ec2AdministratorImporter(
             SqliteConnectionFactory factory,
-            ProductionMachineRepository machineRepository)
+            ProductionMachineRepository machineRepository,
+            ProductionSectorIds sectorIds)
         {
             _factory = factory;
             _machineRepository = machineRepository;
+            _sectorIds = sectorIds;
         }
 
         public void ImportIfConfigured(ProductionImportResult result)
@@ -623,7 +626,7 @@ namespace TeamOps.Services
             return values.Any(ContainsBrokenEncoding);
         }
 
-        private static List<Ec2ParsedRow> ParseRows(
+        private List<Ec2ParsedRow> ParseRows(
             IReadOnlyList<string> lines,
             DateTime snapshotAt,
             Ec2ImportSettings settings,
@@ -632,7 +635,7 @@ namespace TeamOps.Services
             return ParseAdministratorRowsFixed(lines, snapshotAt, settings, result);
         }
 
-        private static List<Ec2ParsedRow> ParseAdministratorDatSampleRows(
+        private List<Ec2ParsedRow> ParseAdministratorDatSampleRows(
             IReadOnlyList<string> lines,
             DateTime snapshotAt,
             Ec2ImportSettings settings,
@@ -641,7 +644,7 @@ namespace TeamOps.Services
             return ParseAdministratorRowsFixed(lines, snapshotAt, settings, result);
         }
 
-        private static List<Ec2ParsedRow> ParseAdministratorRowsFixed(
+        private List<Ec2ParsedRow> ParseAdministratorRowsFixed(
             IReadOnlyList<string> lines,
             DateTime snapshotAt,
             Ec2ImportSettings settings,
@@ -1216,13 +1219,13 @@ namespace TeamOps.Services
                 : null;
         }
 
-        private static int? ResolveSectorId(string areaLabel)
+        private int? ResolveSectorId(string areaLabel)
         {
             var normalized = (areaLabel ?? string.Empty).Trim();
             if (normalized.Contains("DAD", StringComparison.OrdinalIgnoreCase)
                 || normalized.Contains("211D", StringComparison.OrdinalIgnoreCase))
             {
-                return 2;
+                return _sectorIds.Dad;
             }
 
             if (normalized.Contains("GBARERU", StringComparison.OrdinalIgnoreCase)
@@ -1231,7 +1234,7 @@ namespace TeamOps.Services
                 || normalized.Contains("2400", StringComparison.OrdinalIgnoreCase)
                 || normalized.StartsWith("\u30A8\u30EA\u30A2", StringComparison.OrdinalIgnoreCase))
             {
-                return 1;
+                return _sectorIds.GBareru;
             }
 
             return null;
@@ -1250,9 +1253,9 @@ namespace TeamOps.Services
                 : areaNumber.Value + 1;
         }
 
-        private static string ResolveLineCode(string areaLabel, int? sectorId)
+        private string ResolveLineCode(string areaLabel, int? sectorId)
         {
-            if (sectorId == 2
+            if (sectorId == _sectorIds.Dad
                 || (areaLabel ?? string.Empty).Contains("211D", StringComparison.OrdinalIgnoreCase)
                 || (areaLabel ?? string.Empty).Contains("DAD", StringComparison.OrdinalIgnoreCase))
             {
