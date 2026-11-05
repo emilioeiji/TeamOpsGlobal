@@ -20,6 +20,7 @@ namespace TeamOps.UI.Forms
         private readonly SqliteConnectionFactory _factory;
         private readonly Dictionary<string, AdminEntityDefinition> _entities;
         private readonly AdministrativeScopeService _scopeService;
+        private readonly OrganizationAdministrationService _organizationAdministration;
         private AdministrativeScope _scope;
 
         public HTMLFormAdmin()
@@ -30,6 +31,7 @@ namespace TeamOps.UI.Forms
 
             _factory = Program.ConnectionFactory;
             _scopeService = new AdministrativeScopeService(_factory);
+            _organizationAdministration = new OrganizationAdministrationService(_factory);
             _scope = _scopeService.GetScope(CurrentUserId);
             _entities = BuildEntities();
 
@@ -181,6 +183,17 @@ namespace TeamOps.UI.Forms
                         WHERE l.SectorId IN @authorizedSectorIds
                         ORDER BY l.SectorId, l.NamePt, l.Id;"
                     , new { authorizedSectorIds }).ToList(),
+                organizationUnits = conn.Query(
+                    @"
+                        SELECT Id AS id, Code AS code, NamePt AS namePt,
+                               COALESCE(NULLIF(NameJp, ''), NamePt) AS nameJp,
+                               Code || ' - ' || NamePt AS labelPt,
+                               Code || ' - ' || COALESCE(NULLIF(NameJp, ''), NamePt) AS labelJp
+                        FROM OrganizationNodes
+                        WHERE NodeType = 'Unit' AND IsActive = 1 AND @canManageGlobal = 1
+                        ORDER BY Code COLLATE NOCASE;",
+                    new { canManageGlobal = _scope.CanManageGlobalCatalogs ? 1 : 0 }
+                ).ToList(),
                 machineActive = new[]
                 {
                     new { id = 1, namePt = "Ativa", nameJp = "稼働", labelPt = "Ativa", labelJp = "稼働" },
@@ -334,13 +347,16 @@ namespace TeamOps.UI.Forms
             using var conn = _factory.CreateOpenConnection();
             EnsureAdminSchema(conn);
             var values = root.GetProperty("values");
-            DemandRequestedScope(conn, entity, values, PermissionActions.Create);
-            var parameters = entity.BuildParameters(conn, values, null);
-            using var transaction = conn.BeginTransaction();
-            conn.Execute(entity.InsertSql, parameters, transaction);
-            var id = conn.ExecuteScalar<long>("SELECT last_insert_rowid();", transaction: transaction);
-            WriteAdminAudit(conn, transaction, "AdminCreated", entityKey, id);
-            transaction.Commit();
+            if (!SaveOrganizationEntity(entityKey, values))
+            {
+                DemandRequestedScope(conn, entity, values, PermissionActions.Create);
+                var parameters = entity.BuildParameters(conn, values, null);
+                using var transaction = conn.BeginTransaction();
+                conn.Execute(entity.InsertSql, parameters, transaction);
+                var id = conn.ExecuteScalar<long>("SELECT last_insert_rowid();", transaction: transaction);
+                WriteAdminAudit(conn, transaction, "AdminCreated", entityKey, id);
+                transaction.Commit();
+            }
 
             PostJson(new
             {
@@ -366,14 +382,17 @@ namespace TeamOps.UI.Forms
             using var conn = _factory.CreateOpenConnection();
             EnsureAdminSchema(conn);
             var values = root.GetProperty("values");
-            DemandExistingScope(conn, entity, id, PermissionActions.Edit);
-            DemandRequestedScope(conn, entity, values, PermissionActions.Edit);
-            var parameters = entity.BuildParameters(conn, values, id);
-            using var transaction = conn.BeginTransaction();
-            if (conn.Execute(entity.UpdateSql, parameters, transaction) != 1)
-                throw new InvalidOperationException(L("Registro nao encontrado para atualizacao.", "更新対象が見つかりません。"));
-            WriteAdminAudit(conn, transaction, "AdminUpdated", entityKey, id);
-            transaction.Commit();
+            if (!UpdateOrganizationEntity(entityKey, id, values))
+            {
+                DemandExistingScope(conn, entity, id, PermissionActions.Edit);
+                DemandRequestedScope(conn, entity, values, PermissionActions.Edit);
+                var parameters = entity.BuildParameters(conn, values, id);
+                using var transaction = conn.BeginTransaction();
+                if (conn.Execute(entity.UpdateSql, parameters, transaction) != 1)
+                    throw new InvalidOperationException(L("Registro nao encontrado para atualizacao.", "更新対象が見つかりません。"));
+                WriteAdminAudit(conn, transaction, "AdminUpdated", entityKey, id);
+                transaction.Commit();
+            }
 
             PostJson(new
             {
@@ -398,12 +417,15 @@ namespace TeamOps.UI.Forms
 
             using var conn = _factory.CreateOpenConnection();
             EnsureAdminSchema(conn);
-            DemandExistingScope(conn, entity, id, PermissionActions.Delete);
-            using var transaction = conn.BeginTransaction();
-            if (conn.Execute(entity.DeleteSql, new { id }, transaction) != 1)
-                throw new InvalidOperationException(L("Registro nao encontrado para exclusao.", "削除対象が見つかりません。"));
-            WriteAdminAudit(conn, transaction, "AdminDeleted", entityKey, id);
-            transaction.Commit();
+            if (!DeleteOrganizationEntity(entityKey, id))
+            {
+                DemandExistingScope(conn, entity, id, PermissionActions.Delete);
+                using var transaction = conn.BeginTransaction();
+                if (conn.Execute(entity.DeleteSql, new { id }, transaction) != 1)
+                    throw new InvalidOperationException(L("Registro nao encontrado para exclusao.", "削除対象が見つかりません。"));
+                WriteAdminAudit(conn, transaction, "AdminDeleted", entityKey, id);
+                transaction.Commit();
+            }
 
             PostJson(new
             {
@@ -439,6 +461,65 @@ namespace TeamOps.UI.Forms
 
             _scopeService.DemandSector(CurrentUserId, sectorId, action);
         }
+
+        private bool SaveOrganizationEntity(string entityKey, JsonElement values)
+        {
+            if (entityKey == "organization_unit")
+            {
+                _organizationAdministration.AddUnit(CurrentUserId, ReadUnitRequest(values));
+                return true;
+            }
+            if (entityKey == "organization_sector")
+            {
+                _organizationAdministration.AddSector(CurrentUserId, ReadSectorRequest(values));
+                return true;
+            }
+            return false;
+        }
+
+        private bool UpdateOrganizationEntity(string entityKey, int id, JsonElement values)
+        {
+            if (entityKey == "organization_unit")
+            {
+                _organizationAdministration.UpdateUnit(CurrentUserId, id, ReadUnitRequest(values));
+                return true;
+            }
+            if (entityKey == "organization_sector")
+            {
+                _organizationAdministration.UpdateSector(CurrentUserId, id, ReadSectorRequest(values));
+                return true;
+            }
+            return false;
+        }
+
+        private bool DeleteOrganizationEntity(string entityKey, int id)
+        {
+            if (entityKey == "organization_unit")
+            {
+                _organizationAdministration.DeactivateUnit(CurrentUserId, id);
+                return true;
+            }
+            if (entityKey == "organization_sector")
+            {
+                _organizationAdministration.DeactivateSector(CurrentUserId, id);
+                return true;
+            }
+            return false;
+        }
+
+        private static OrganizationUnitSaveRequest ReadUnitRequest(JsonElement values) => new(
+            ReadInt(values, "parentId") is var parentId && parentId > 0 ? parentId : null,
+            ReadString(values, "code"),
+            ReadString(values, "namePt"),
+            ReadString(values, "nameJp"),
+            ReadBool(values, "isActive", true));
+
+        private static OrganizationSectorSaveRequest ReadSectorRequest(JsonElement values) => new(
+            ReadInt(values, "parentUnitId"),
+            ReadString(values, "code"),
+            ReadString(values, "namePt"),
+            ReadString(values, "nameJp"),
+            ReadBool(values, "isActive", true));
 
         private void DemandExistingScope(
             IDbConnection conn,
@@ -500,6 +581,8 @@ namespace TeamOps.UI.Forms
         {
             return new[]
             {
+                CreateOrganizationUnitEntity(),
+                CreateOrganizationSectorEntity(),
                 CreateNameEntity(
                     "shift", "core",
                     "Turnos", "\u30b7\u30d5\u30c8",
@@ -549,6 +632,7 @@ namespace TeamOps.UI.Forms
                     "\u30d5\u30a9\u30ed\u30fc\u30d5\u30a9\u30fc\u30e0\u3067\u4f7f\u3046\u7a2e\u5225\u30de\u30b9\u30bf\u3067\u3059\u3002",
                     "FollowUpTypes"),
                 CreateShainEntity(),
+                CreateSecurityAuditEntity(),
                 CreateSystemLogEntity()
             }
             .Where(item => _scope.CanManageGlobalCatalogs || item.Scope != AdminEntityScope.Global)
@@ -563,6 +647,130 @@ namespace TeamOps.UI.Forms
             entity.Scope = scope;
             entity.ReadOnly = entity.ReadOnly || readOnly;
             return entity;
+        }
+
+        private static AdminEntityDefinition CreateOrganizationUnitEntity()
+        {
+            return new AdminEntityDefinition
+            {
+                Key = "organization_unit",
+                Group = "organization",
+                TitlePt = "Arvore de Unidades",
+                TitleJp = "組織ユニットツリー",
+                DescriptionPt = "Unidades hierarquicas como 5500, 5552 e futuras ramificacoes.",
+                DescriptionJp = "5500、5552、および将来の組織ブランチを管理します。",
+                Fields =
+                {
+                    new AdminFieldDefinition("parentId", "Unidade superior", "Parent unit", "select", false, "organizationUnits"),
+                    new AdminFieldDefinition("code", "Codigo", "Code", "text", true),
+                    new AdminFieldDefinition("namePt", "Nome PT", "Name PT", "text", true),
+                    new AdminFieldDefinition("nameJp", "Nome JP", "Name JP", "text", false),
+                    new AdminFieldDefinition("isActive", "Ativa", "Active", "checkbox", false)
+                },
+                Columns =
+                {
+                    new AdminColumnDefinition("treePath", null, "Caminho", "Path"),
+                    new AdminColumnDefinition("code", null, "Codigo", "Code"),
+                    new AdminColumnDefinition("namePt", "nameJp", "Nome", "Name"),
+                    new AdminColumnDefinition("activeLabelPt", "activeLabelJp", "Status", "Status")
+                },
+                QueryRows = conn => conn.Query(@"
+                    WITH RECURSIVE tree AS (
+                        SELECT Id, ParentId, Code, NamePt, NameJp, IsActive, Code AS TreePath
+                        FROM OrganizationNodes WHERE NodeType = 'Unit' AND ParentId IS NULL
+                        UNION ALL
+                        SELECT child.Id, child.ParentId, child.Code, child.NamePt, child.NameJp, child.IsActive,
+                               tree.TreePath || ' / ' || child.Code
+                        FROM OrganizationNodes child
+                        JOIN tree ON child.ParentId = tree.Id
+                        WHERE child.NodeType = 'Unit'
+                    )
+                    SELECT Id AS id, COALESCE(ParentId, 0) AS parentId, Code AS code,
+                           NamePt AS namePt, NameJp AS nameJp, IsActive AS isActive, TreePath AS treePath,
+                           CASE IsActive WHEN 1 THEN 'Ativa' ELSE 'Inativa' END AS activeLabelPt,
+                           CASE IsActive WHEN 1 THEN 'Active' ELSE 'Inactive' END AS activeLabelJp
+                    FROM tree ORDER BY TreePath COLLATE NOCASE;"),
+                BuildParameters = (_, _, _) => new DynamicParameters()
+            };
+        }
+
+        private static AdminEntityDefinition CreateOrganizationSectorEntity()
+        {
+            return new AdminEntityDefinition
+            {
+                Key = "organization_sector",
+                Group = "organization",
+                TitlePt = "Setores da Arvore",
+                TitleJp = "組織セクター",
+                DescriptionPt = "Cria e mantem o setor sincronizado com seu no organizacional.",
+                DescriptionJp = "セクターと組織ノードを同期して管理します。",
+                Fields =
+                {
+                    new AdminFieldDefinition("parentUnitId", "Unidade superior", "Parent unit", "select", true, "organizationUnits"),
+                    new AdminFieldDefinition("code", "Codigo", "Code", "text", true),
+                    new AdminFieldDefinition("namePt", "Nome PT", "Name PT", "text", true),
+                    new AdminFieldDefinition("nameJp", "Nome JP", "Name JP", "text", false),
+                    new AdminFieldDefinition("isActive", "Ativo", "Active", "checkbox", false)
+                },
+                Columns =
+                {
+                    new AdminColumnDefinition("unitCode", null, "Unidade", "Unit"),
+                    new AdminColumnDefinition("code", null, "Codigo", "Code"),
+                    new AdminColumnDefinition("namePt", "nameJp", "Nome", "Name"),
+                    new AdminColumnDefinition("activeLabelPt", "activeLabelJp", "Status", "Status")
+                },
+                QueryRows = conn => conn.Query(@"
+                    SELECT s.Id AS id, node.ParentId AS parentUnitId, parent.Code AS unitCode,
+                           s.Code AS code, s.NamePt AS namePt, s.NameJp AS nameJp, s.IsActive AS isActive,
+                           CASE s.IsActive WHEN 1 THEN 'Ativo' ELSE 'Inativo' END AS activeLabelPt,
+                           CASE s.IsActive WHEN 1 THEN 'Active' ELSE 'Inactive' END AS activeLabelJp
+                    FROM Sectors s
+                    JOIN OrganizationNodes node ON node.Id = s.OrganizationNodeId AND node.NodeType = 'Sector'
+                    LEFT JOIN OrganizationNodes parent ON parent.Id = node.ParentId
+                    ORDER BY COALESCE(parent.Code, ''), s.Code COLLATE NOCASE;"),
+                BuildParameters = (_, _, _) => new DynamicParameters()
+            };
+        }
+
+        private static AdminEntityDefinition CreateSecurityAuditEntity()
+        {
+            return new AdminEntityDefinition
+            {
+                Key = "security_audit",
+                Group = "misc",
+                ReadOnly = true,
+                TitlePt = "Auditoria de Seguranca",
+                TitleJp = "セキュリティ監査",
+                DescriptionPt = "Eventos de acesso, autenticacao e alteracoes administrativas.",
+                DescriptionJp = "アクセス、認証、管理変更の監査イベントです。",
+                Columns =
+                {
+                    new AdminColumnDefinition("occurredAt", null, "Data/Hora", "Date/Time"),
+                    new AdminColumnDefinition("source", null, "Origem", "Source"),
+                    new AdminColumnDefinition("actor", null, "Usuario", "User"),
+                    new AdminColumnDefinition("eventType", null, "Evento", "Event"),
+                    new AdminColumnDefinition("target", null, "Alvo", "Target"),
+                    new AdminColumnDefinition("details", null, "Detalhes", "Details")
+                },
+                QueryRows = conn => conn.Query(@"
+                    SELECT * FROM (
+                        SELECT sa.OccurredAt AS occurredAt, 'Security' AS source,
+                               COALESCE(actor.Login, 'Sistema') AS actor, sa.EventType AS eventType,
+                               sa.TargetType || CASE WHEN sa.TargetId IS NULL THEN '' ELSE ':' || sa.TargetId END AS target,
+                               COALESCE(sa.Details, '') AS details
+                        FROM SecurityAudit sa
+                        LEFT JOIN Users actor ON actor.Id = sa.ActorUserId
+                        UNION ALL
+                        SELECT aa.OccurredAt AS occurredAt, 'Authentication' AS source,
+                               aa.Login AS actor, aa.EventType AS eventType,
+                               'User:' || COALESCE(CAST(aa.UserId AS TEXT), '-') AS target,
+                               trim(COALESCE(aa.Workstation, '') || ' ' || COALESCE(aa.Details, '')) AS details
+                        FROM AuthenticationAudit aa
+                    ) audit
+                    ORDER BY occurredAt DESC
+                    LIMIT 1000;"),
+                BuildParameters = (_, _, _) => throw new InvalidOperationException("Auditoria somente para leitura.")
+            };
         }
 
         private static AdminEntityDefinition CreatePartCodeStyleEntity()

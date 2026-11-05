@@ -287,7 +287,7 @@ function renderEntityList() {
         groups[entity.group].push(entity);
     });
 
-    const order = ["core", "production", "followup", "people", "misc"];
+    const order = ["organization", "core", "production", "followup", "people", "misc"];
 
     container.innerHTML = order
         .filter(group => groups[group]?.length)
@@ -865,6 +865,7 @@ function lookupOptionLabel(item) {
 
 function groupLabel(group) {
     const labels = {
+        organization: state.locale === "ja-JP" ? "組織" : "Organizacao",
         core: state.locale === "ja-JP" ? "基礎マスタ" : "Base",
         production: state.locale === "ja-JP" ? "生産マスタ" : "Producao",
         followup: state.locale === "ja-JP" ? "フォローマスタ" : "Follow",
