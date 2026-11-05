@@ -33,6 +33,7 @@ namespace TeamOps.Data.Db
             }
 
             EnsureMigrationTable(conn);
+            EnsureLegacyBaseline(conn);
 
             foreach (var migration in GetMigrations())
                 ApplyMigration(conn, migration);
@@ -75,6 +76,43 @@ namespace TeamOps.Data.Db
             new(4, "Hikitsugui audiences", "TeamOps.Data.Migrations.V2_0004_HikitsuguiAudiences.sql"),
             new(5, "Tasks sector scope", "TeamOps.Data.Migrations.V2_0005_TasksSectorScope.sql")
         ];
+
+        private static void EnsureLegacyBaseline(SqliteConnection conn)
+        {
+            EnsureColumn(conn, "Operators", "BadgeCode", "TEXT");
+            EnsureColumn(conn, "Sectors", "Code", "TEXT");
+            EnsureColumn(conn, "Sectors", "OrganizationNodeId", "INTEGER REFERENCES OrganizationNodes(Id)");
+            EnsureColumn(conn, "Sectors", "IsActive", "INTEGER NOT NULL DEFAULT 1");
+        }
+
+        private static void EnsureColumn(
+            SqliteConnection conn,
+            string tableName,
+            string columnName,
+            string definition)
+        {
+            using var table = conn.CreateCommand();
+            table.CommandText = @"
+                SELECT COUNT(*)
+                FROM sqlite_master
+                WHERE type = 'table' AND name = @tableName COLLATE NOCASE;";
+            table.Parameters.AddWithValue("@tableName", tableName);
+            if ((long)table.ExecuteScalar()! == 0)
+                return;
+
+            using var columns = conn.CreateCommand();
+            columns.CommandText = $"PRAGMA table_info(\"{tableName}\");";
+            using var reader = columns.ExecuteReader();
+            while (reader.Read())
+            {
+                if (string.Equals(reader.GetString(1), columnName, StringComparison.OrdinalIgnoreCase))
+                    return;
+            }
+
+            using var alter = conn.CreateCommand();
+            alter.CommandText = $"ALTER TABLE \"{tableName}\" ADD COLUMN \"{columnName}\" {definition};";
+            alter.ExecuteNonQuery();
+        }
 
         private static void ApplyMigration(SqliteConnection conn, MigrationDefinition migration)
         {

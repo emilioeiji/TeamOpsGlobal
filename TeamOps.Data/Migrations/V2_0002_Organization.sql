@@ -78,6 +78,16 @@ INSERT OR IGNORE INTO OrganizationNodes (ParentId, NodeType, Code, NamePt, NameJ
 SELECT Id, 'Unit', '5552', 'Unidade 5552', '5552'
 FROM OrganizationNodes WHERE Code = '5500';
 
+-- Preserva os setores do banco anterior ao Schema V2. Os IDs 1 e 2 eram
+-- respectivamente G-Bareru e DAD na aplicacao legada.
+UPDATE Sectors
+SET Code = CASE Id
+    WHEN 1 THEN 'G-BARERU'
+    WHEN 2 THEN 'DAD'
+    ELSE 'LEGACY-' || Id
+END
+WHERE Code IS NULL OR trim(Code) = '';
+
 INSERT OR IGNORE INTO OrganizationNodes (ParentId, NodeType, Code, NamePt, NameJp)
 SELECT Id, 'Sector', 'G-BARERU', 'G-Bareru', 'G-Bareru'
 FROM OrganizationNodes WHERE Code = '5552';
@@ -94,10 +104,36 @@ INSERT OR IGNORE INTO OrganizationNodes (ParentId, NodeType, Code, NamePt, NameJ
 SELECT Id, 'Sector', 'APL', 'APL', 'APL'
 FROM OrganizationNodes WHERE Code = '5552';
 
-INSERT OR IGNORE INTO Sectors (Code, NamePt, NameJp, OrganizationNodeId, IsActive)
-SELECT Code, NamePt, NameJp, Id, IsActive
-FROM OrganizationNodes
-WHERE NodeType = 'Sector';
+INSERT OR IGNORE INTO OrganizationNodes (ParentId, NodeType, Code, NamePt, NameJp, IsActive)
+SELECT unit.Id, 'Sector', sector.Code, sector.NamePt, sector.NameJp, COALESCE(sector.IsActive, 1)
+FROM Sectors sector
+JOIN OrganizationNodes unit ON unit.Code = '5552'
+WHERE sector.Code IS NOT NULL AND trim(sector.Code) <> '';
+
+INSERT INTO Sectors (Code, NamePt, NameJp, OrganizationNodeId, IsActive)
+SELECT node.Code, node.NamePt, node.NameJp, node.Id, node.IsActive
+FROM OrganizationNodes node
+WHERE node.NodeType = 'Sector'
+  AND NOT EXISTS (
+      SELECT 1 FROM Sectors sector
+      WHERE sector.Code = node.Code COLLATE NOCASE
+  );
+
+UPDATE Sectors
+SET OrganizationNodeId = (
+        SELECT node.Id
+        FROM OrganizationNodes node
+        WHERE node.NodeType = 'Sector'
+          AND node.Code = Sectors.Code COLLATE NOCASE
+    ),
+    IsActive = COALESCE(IsActive, 1)
+WHERE Code IS NOT NULL AND trim(Code) <> '';
+
+CREATE UNIQUE INDEX IF NOT EXISTS UX_Sectors_Code
+ON Sectors(Code) WHERE Code IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS UX_Sectors_OrganizationNodeId
+ON Sectors(OrganizationNodeId) WHERE OrganizationNodeId IS NOT NULL;
 
 INSERT OR IGNORE INTO AccessProfiles (Code, NamePt, NameJp, HierarchyRank, ScopeMode) VALUES
 ('DIRECTOR', 'Diretor', 'ディレクター', 6, 'OrganizationTree'),
