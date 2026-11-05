@@ -15,11 +15,21 @@ namespace TeamOps.UI.Services
     {
         private readonly SqliteConnectionFactory _factory;
         private readonly ProductionAnalyticsService _analytics;
+        private readonly int[] _authorizedSectorIds;
 
-        public ProductionManagementReportService(SqliteConnectionFactory factory)
+        public ProductionManagementReportService(
+            SqliteConnectionFactory factory,
+            IEnumerable<int> authorizedSectorIds)
         {
             _factory = factory;
             _analytics = new ProductionAnalyticsService(factory);
+            _authorizedSectorIds = authorizedSectorIds
+                .Where(id => id > 0)
+                .Distinct()
+                .ToArray();
+
+            if (_authorizedSectorIds.Length == 0)
+                throw new UnauthorizedAccessException("Usuario sem setores autorizados para relatorios.");
         }
 
         public ProductionManagementInitPayload GetInitialPayload()
@@ -30,7 +40,9 @@ namespace TeamOps.UI.Services
 
             return new ProductionManagementInitPayload(
                 QueryLookup(conn, "Shifts").ToList(),
-                QueryLookup(conn, "Sectors").ToList(),
+                QueryLookup(conn, "Sectors")
+                    .Where(item => _authorizedSectorIds.Contains(item.Id))
+                    .ToList(),
                 QueryLookup(conn, "Groups").ToList(),
                 conn.Query<ProductionManagementLocalOption>(
                     @"
@@ -40,7 +52,9 @@ namespace TeamOps.UI.Services
                             COALESCE(NamePt, '') AS NamePt,
                             COALESCE(NULLIF(NameJp, ''), NamePt, '') AS NameJp
                         FROM Locals
-                        ORDER BY SectorId, NamePt;").ToList(),
+                        WHERE SectorId IN @AuthorizedSectorIds
+                        ORDER BY SectorId, NamePt;",
+                    new { AuthorizedSectorIds = _authorizedSectorIds }).ToList(),
                 conn.Query<ProductionManagementMachineOption>(
                     @"
                         SELECT
@@ -52,7 +66,9 @@ namespace TeamOps.UI.Services
                             COALESCE(NULLIF(NameJp, ''), NamePt, '') AS NameJp
                         FROM Machines
                         WHERE COALESCE(IsActive, 1) = 1
-                        ORDER BY COALESCE(MachineCode, NamePt), Id;").ToList(),
+                          AND SectorId IN @AuthorizedSectorIds
+                        ORDER BY COALESCE(MachineCode, NamePt), Id;",
+                    new { AuthorizedSectorIds = _authorizedSectorIds }).ToList(),
                 conn.Query<ProductionManagementOperatorOption>(
                     @"
                         SELECT
@@ -65,8 +81,10 @@ namespace TeamOps.UI.Services
                             COALESCE(NULLIF(NameRomanji, ''), CodigoFJ) AS NamePt,
                             COALESCE(NULLIF(NameNihongo, ''), COALESCE(NULLIF(NameRomanji, ''), CodigoFJ)) AS NameJp
                         FROM Operators
-                        ORDER BY NameRomanji, CodigoFJ;").ToList(),
-                QueryPartCodes(conn).ToList());
+                        WHERE SectorId IN @AuthorizedSectorIds
+                        ORDER BY NameRomanji, CodigoFJ;",
+                    new { AuthorizedSectorIds = _authorizedSectorIds }).ToList(),
+                QueryPartCodes(conn, _authorizedSectorIds).ToList());
         }
 
         public ProductionManagementReportPayload BuildReport(ProductionManagementReportFilter filter, string userFj)
@@ -79,6 +97,8 @@ namespace TeamOps.UI.Services
             {
                 (start, end) = (end, start);
             }
+
+            DemandSector(filter.SectorId);
 
             using var conn = _factory.CreateOpenConnection();
             TeamOps.Data.Db.ProductionSchemaMigrator.Ensure(conn);
@@ -93,36 +113,42 @@ namespace TeamOps.UI.Services
             }
 
             var dailyDashboards = new List<ProductionDashboardSnapshot>();
+            var sectorsToQuery = filter.SectorId > 0
+                ? new[] { filter.SectorId }
+                : _authorizedSectorIds;
             for (var day = start; day <= end; day = day.AddDays(1))
             {
-                foreach (var shift in shifts)
+                foreach (var sectorId in sectorsToQuery)
                 {
-                    var dashboard = _analytics.BuildDashboard(new ProductionDashboardFilter
+                    foreach (var shift in shifts)
                     {
-                        Date = day,
-                        ShiftId = shift.Id,
-                        SectorId = filter.SectorId,
-                        LocalId = filter.LocalId,
-                        MachineId = filter.MachineId
-                    });
+                        var dashboard = _analytics.BuildDashboard(new ProductionDashboardFilter
+                        {
+                            Date = day,
+                            ShiftId = shift.Id,
+                            SectorId = sectorId,
+                            LocalId = filter.LocalId,
+                            MachineId = filter.MachineId
+                        });
 
-                    if (!string.IsNullOrWhiteSpace(filter.PartCode)
-                        && !DashboardHasPartCode(dashboard, filter.PartCode))
-                    {
-                        continue;
+                        if (!string.IsNullOrWhiteSpace(filter.PartCode)
+                            && !DashboardHasPartCode(dashboard, filter.PartCode))
+                        {
+                            continue;
+                        }
+
+                        dailyDashboards.Add(new ProductionDashboardSnapshot(day, shift, dashboard));
                     }
-
-                    dailyDashboards.Add(new ProductionDashboardSnapshot(day, shift, dashboard));
                 }
             }
             loadProductionWatch.Stop();
 
             var loadOperatorsWatch = Stopwatch.StartNew();
-            var operators = LoadOperators(conn, filter).ToList();
+            var operators = LoadOperators(conn, filter, _authorizedSectorIds).ToList();
             loadOperatorsWatch.Stop();
 
             var loadPresenceWatch = Stopwatch.StartNew();
-            var scheduleRows = LoadScheduleRows(conn, start, end, filter).ToList();
+            var scheduleRows = LoadScheduleRows(conn, start, end, filter, _authorizedSectorIds).ToList();
             var scheduleByOperator = scheduleRows
                 .GroupBy(item => item.OperatorCodigoFJ, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.OrdinalIgnoreCase);
@@ -184,22 +210,34 @@ namespace TeamOps.UI.Services
                     ORDER BY NamePt;");
         }
 
-        private static IEnumerable<string> QueryPartCodes(System.Data.IDbConnection conn)
+        private static IEnumerable<string> QueryPartCodes(
+            System.Data.IDbConnection conn,
+            int[] authorizedSectorIds)
         {
             return conn.Query<string>(
                 @"
                     SELECT DISTINCT PartCode
                     FROM (
-                        SELECT COALESCE(PartCode, '') AS PartCode FROM Ec2MachineCurrentState
+                        SELECT COALESCE(ecs.PartCode, '') AS PartCode
+                        FROM Ec2MachineCurrentState ecs
+                        JOIN Machines m ON m.Id = ecs.MachineId
+                        WHERE m.SectorId IN @AuthorizedSectorIds
                         UNION ALL
-                        SELECT COALESCE(RecipeName, '') AS PartCode FROM MachineEvents
+                        SELECT COALESCE(me.RecipeName, '') AS PartCode
+                        FROM MachineEvents me
+                        JOIN Machines m ON m.Id = me.MachineId
+                        WHERE m.SectorId IN @AuthorizedSectorIds
                     )
                     WHERE trim(PartCode) <> ''
                     ORDER BY PartCode
-                    LIMIT 500;");
+                    LIMIT 500;",
+                new { AuthorizedSectorIds = authorizedSectorIds });
         }
 
-        private static IEnumerable<OperatorRow> LoadOperators(System.Data.IDbConnection conn, ProductionManagementReportFilter filter)
+        private static IEnumerable<OperatorRow> LoadOperators(
+            System.Data.IDbConnection conn,
+            ProductionManagementReportFilter filter,
+            int[] authorizedSectorIds)
         {
             return conn.Query<OperatorRow>(
                 @"
@@ -223,6 +261,7 @@ namespace TeamOps.UI.Services
                     LEFT JOIN Sectors sec ON sec.Id = o.SectorId
                     LEFT JOIN Groups g ON g.Id = o.GroupId
                     WHERE (@OnlyActive = 0 OR COALESCE(o.Status, 1) = 1)
+                      AND o.SectorId IN @AuthorizedSectorIds
                       AND (@ShiftId <= 0 OR o.ShiftId = @ShiftId)
                       AND (@SectorId <= 0 OR o.SectorId = @SectorId)
                       AND (@GroupId <= 0 OR o.GroupId = @GroupId)
@@ -236,7 +275,8 @@ namespace TeamOps.UI.Services
                     filter.SectorId,
                     filter.GroupId,
                     OperatorCode = filter.OperatorCode ?? string.Empty,
-                    LeaderCode = filter.LeaderCode ?? string.Empty
+                    LeaderCode = filter.LeaderCode ?? string.Empty,
+                    AuthorizedSectorIds = authorizedSectorIds
                 });
         }
 
@@ -266,7 +306,12 @@ namespace TeamOps.UI.Services
                 });
         }
 
-        private static IEnumerable<ScheduleRow> LoadScheduleRows(System.Data.IDbConnection conn, DateTime start, DateTime end, ProductionManagementReportFilter filter)
+        private static IEnumerable<ScheduleRow> LoadScheduleRows(
+            System.Data.IDbConnection conn,
+            DateTime start,
+            DateTime end,
+            ProductionManagementReportFilter filter,
+            int[] authorizedSectorIds)
         {
             return conn.Query<ScheduleRow>(
                 @"
@@ -280,6 +325,7 @@ namespace TeamOps.UI.Services
                     FROM HaidaiAssignments ha
                     WHERE date(ha.ScheduleDate) BETWEEN date(@Start) AND date(@End)
                       AND COALESCE(ha.IsLineupActive, 1) = 1
+                      AND ha.SectorId IN @AuthorizedSectorIds
                       AND (@ShiftId <= 0 OR ha.ShiftId = @ShiftId)
                       AND (@SectorId <= 0 OR ha.SectorId = @SectorId)
                       AND (@LocalId <= 0 OR ha.LocalId = @LocalId)
@@ -291,8 +337,15 @@ namespace TeamOps.UI.Services
                     filter.ShiftId,
                     filter.SectorId,
                     filter.LocalId,
-                    OperatorCode = filter.OperatorCode ?? string.Empty
+                    OperatorCode = filter.OperatorCode ?? string.Empty,
+                    AuthorizedSectorIds = authorizedSectorIds
                 });
+        }
+
+        private void DemandSector(int sectorId)
+        {
+            if (sectorId > 0 && !_authorizedSectorIds.Contains(sectorId))
+                throw new UnauthorizedAccessException("Setor fora do escopo autorizado.");
         }
 
         private static Dictionary<string, PresenceAccumulator> BuildPresenceByOperator(

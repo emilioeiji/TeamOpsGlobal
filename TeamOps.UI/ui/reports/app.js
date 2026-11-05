@@ -131,6 +131,11 @@ function hydrate(data) {
     setText("lblDate", formatDate(data.dateIso));
     setText("lblAvailable", data.availableCount);
     setText("lblTotal", data.totalCount);
+
+    const allowedActions = new Set(data.allowedActions || []);
+    document.querySelectorAll("[data-action]").forEach(button => {
+        button.hidden = !allowedActions.has(button.dataset.action);
+    });
 }
 
 function applyLocale() {

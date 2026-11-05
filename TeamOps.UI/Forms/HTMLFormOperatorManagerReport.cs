@@ -6,8 +6,10 @@ using System.Linq;
 using System.Text.Json;
 using System.Windows.Forms;
 using TeamOps.Core.Entities;
+using TeamOps.Core.Security;
 using TeamOps.Data.Db;
 using TeamOps.Data.Repositories;
+using TeamOps.Data.Security;
 using TeamOps.UI.Services;
 
 namespace TeamOps.UI.Forms
@@ -23,13 +25,18 @@ namespace TeamOps.UI.Forms
 
         public HTMLFormOperatorManagerReport(
             SqliteConnectionFactory factory,
+            User currentUser,
             Operator currentOperator,
             string initialCodigoFJ = "",
             int initialPeriodDays = 90)
         {
             _factory = factory;
             _currentOperator = currentOperator;
-            _service = new OperatorManagerReportService(factory);
+            var authorization = new AuthorizationService(factory);
+            authorization.Demand(currentUser.Id, ModuleCodes.Reports, PermissionActions.View);
+            _service = new OperatorManagerReportService(
+                factory,
+                authorization.GetContext(currentUser.Id).AuthorizedSectorIds);
             _initialCodigoFJ = initialCodigoFJ?.Trim() ?? string.Empty;
             _initialPeriodDays = initialPeriodDays > 0 ? initialPeriodDays : 90;
 

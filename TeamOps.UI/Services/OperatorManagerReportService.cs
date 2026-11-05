@@ -16,10 +16,20 @@ namespace TeamOps.UI.Services
         private const int HolidayWorkFixedMinutes = 11 * 60;
 
         private readonly SqliteConnectionFactory _factory;
+        private readonly int[] _authorizedSectorIds;
 
-        public OperatorManagerReportService(SqliteConnectionFactory factory)
+        public OperatorManagerReportService(
+            SqliteConnectionFactory factory,
+            IEnumerable<int> authorizedSectorIds)
         {
             _factory = factory;
+            _authorizedSectorIds = authorizedSectorIds
+                .Where(id => id > 0)
+                .Distinct()
+                .ToArray();
+
+            if (_authorizedSectorIds.Length == 0)
+                throw new UnauthorizedAccessException("Usuario sem setores autorizados para relatorios.");
         }
 
         public OperatorManagerInitPayload GetInitialPayload(int defaultShiftId, int defaultSectorId)
@@ -42,7 +52,9 @@ namespace TeamOps.UI.Services
                         Id,
                         COALESCE(NULLIF(NamePt, ''), NULLIF(NameJp, ''), 'Setor ' || Id) AS Name
                     FROM Sectors
-                    ORDER BY Id;")
+                    WHERE Id IN @AuthorizedSectorIds
+                    ORDER BY Id;",
+                new { AuthorizedSectorIds = _authorizedSectorIds })
                 .ToList();
 
             var groups = conn.Query<OperatorManagerLookupItem>(
@@ -71,6 +83,7 @@ namespace TeamOps.UI.Services
             var startDate = DateTime.Today.AddDays(-(Math.Max(1, filter.PeriodDays) - 1));
             var endDate = DateTime.Today;
             var search = (filter.Search ?? string.Empty).Trim();
+            DemandSector(filter.SectorId);
 
             var rows = conn.Query<OperatorManagerDirectoryRow>(
                 @"
@@ -91,6 +104,7 @@ namespace TeamOps.UI.Services
                     LEFT JOIN Sectors sec ON sec.Id = o.SectorId
                     LEFT JOIN Groups g ON g.Id = o.GroupId
                     WHERE COALESCE(o.Status, 1) = 1
+                      AND o.SectorId IN @AuthorizedSectorIds
                       AND (@ShiftId <= 0 OR o.ShiftId = @ShiftId)
                       AND (@SectorId <= 0 OR o.SectorId = @SectorId)
                       AND (@GroupId <= 0 OR o.GroupId = @GroupId)
@@ -108,7 +122,8 @@ namespace TeamOps.UI.Services
                     filter.ShiftId,
                     filter.SectorId,
                     filter.GroupId,
-                    Search = search
+                    Search = search,
+                    AuthorizedSectorIds = _authorizedSectorIds
                 })
                 .ToList();
 
@@ -318,6 +333,7 @@ namespace TeamOps.UI.Services
             }
 
             var search = (filter.Search ?? string.Empty).Trim();
+            DemandSector(filter.SectorId);
             var statusFilter = (filter.Status ?? string.Empty).Trim().ToLowerInvariant();
             var loadPresenceWatch = new Stopwatch();
             var loadHaidaiWatch = new Stopwatch();
@@ -350,6 +366,7 @@ namespace TeamOps.UI.Services
                     LEFT JOIN Sectors sec ON sec.Id = o.SectorId
                     LEFT JOIN Groups g ON g.Id = o.GroupId
                     WHERE COALESCE(o.Status, 1) = 1
+                      AND o.SectorId IN @AuthorizedSectorIds
                       AND (@ShiftId <= 0 OR o.ShiftId = @ShiftId)
                       AND (@SectorId <= 0 OR o.SectorId = @SectorId)
                       AND (@GroupId <= 0 OR o.GroupId = @GroupId)
@@ -365,7 +382,8 @@ namespace TeamOps.UI.Services
                     filter.ShiftId,
                     filter.SectorId,
                     filter.GroupId,
-                    Search = search
+                    Search = search,
+                    AuthorizedSectorIds = _authorizedSectorIds
                 })
                 .ToList();
 
@@ -849,12 +867,17 @@ namespace TeamOps.UI.Services
                     LEFT JOIN Shifts s ON s.Id = o.ShiftId
                     LEFT JOIN Sectors sec ON sec.Id = o.SectorId
                     LEFT JOIN Groups g ON g.Id = o.GroupId
-                    WHERE o.CodigoFJ = @CodigoFJ;",
-                new { CodigoFJ = codigoFJ.Trim() });
+                    WHERE o.CodigoFJ = @CodigoFJ
+                      AND o.SectorId IN @AuthorizedSectorIds;",
+                new
+                {
+                    CodigoFJ = codigoFJ.Trim(),
+                    AuthorizedSectorIds = _authorizedSectorIds
+                });
 
             if (operatorInfo == null)
             {
-                throw new InvalidOperationException("Operador nao encontrado para o relatorio gerencial.");
+                throw new UnauthorizedAccessException("Operador inexistente ou fora do escopo autorizado.");
             }
 
             var startDate = DateTime.Today.AddDays(-(Math.Max(1, periodDays) - 1));
@@ -1087,6 +1110,12 @@ namespace TeamOps.UI.Services
                         item.Guidance))
                     .ToList(),
                 dailyHistory);
+        }
+
+        private void DemandSector(int sectorId)
+        {
+            if (sectorId > 0 && !_authorizedSectorIds.Contains(sectorId))
+                throw new UnauthorizedAccessException("Setor fora do escopo autorizado.");
         }
 
         private OperatorManagerMasterCardSummary BuildMasterCardSummary(IReadOnlyList<OperatorManagerMasterCardRow> rows)

@@ -8,7 +8,9 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using TeamOps.Core.Entities;
+using TeamOps.Core.Security;
 using TeamOps.Data.Db;
+using TeamOps.Data.Security;
 using TeamOps.UI.Services;
 
 namespace TeamOps.UI.Forms
@@ -17,14 +19,21 @@ namespace TeamOps.UI.Forms
     {
         private readonly SqliteConnectionFactory _factory;
         private readonly Operator _currentOperator;
+        private readonly User _currentUser;
         private readonly OperatorManagerReportService _service;
         private readonly Microsoft.Web.WebView2.WinForms.WebView2 _webView;
 
-        public HTMLFormPresenceReport(SqliteConnectionFactory factory, Operator currentOperator)
+        public HTMLFormPresenceReport(SqliteConnectionFactory factory, User currentUser, Operator currentOperator)
         {
             _factory = factory;
+            _currentUser = currentUser;
             _currentOperator = currentOperator;
-            _service = new OperatorManagerReportService(factory);
+            var authorization = new AuthorizationService(factory);
+            authorization.Demand(currentUser.Id, ModuleCodes.Reports, PermissionActions.View);
+            authorization.Demand(currentUser.Id, ModuleCodes.Presence, PermissionActions.View);
+            _service = new OperatorManagerReportService(
+                factory,
+                authorization.GetContext(currentUser.Id).AuthorizedSectorIds);
 
             Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
             Text = L("Relatorio de Presenca", "Attendance Report");
@@ -264,6 +273,7 @@ namespace TeamOps.UI.Forms
 
                 using var form = new HTMLFormOperatorManagerReport(
                     _factory,
+                    _currentUser,
                     _currentOperator,
                     codigoFJ.Trim(),
                     periodDays);

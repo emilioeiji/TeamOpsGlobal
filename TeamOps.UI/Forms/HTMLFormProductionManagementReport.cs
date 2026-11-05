@@ -8,7 +8,9 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using TeamOps.Core.Entities;
+using TeamOps.Core.Security;
 using TeamOps.Data.Db;
+using TeamOps.Data.Security;
 using TeamOps.UI.Services;
 
 namespace TeamOps.UI.Forms
@@ -19,10 +21,18 @@ namespace TeamOps.UI.Forms
         private readonly ProductionManagementReportService _service;
         private readonly Microsoft.Web.WebView2.WinForms.WebView2 _webView;
 
-        public HTMLFormProductionManagementReport(SqliteConnectionFactory factory, Operator currentOperator)
+        public HTMLFormProductionManagementReport(
+            SqliteConnectionFactory factory,
+            User currentUser,
+            Operator currentOperator)
         {
             _currentOperator = currentOperator;
-            _service = new ProductionManagementReportService(factory);
+            var authorization = new AuthorizationService(factory);
+            authorization.Demand(currentUser.Id, ModuleCodes.Reports, PermissionActions.View);
+            authorization.Demand(currentUser.Id, ModuleCodes.Production, PermissionActions.View);
+            _service = new ProductionManagementReportService(
+                factory,
+                authorization.GetContext(currentUser.Id).AuthorizedSectorIds);
 
             Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
             Text = L("Relatorio Gerencial de Producao", "Production Management Report");
@@ -107,6 +117,9 @@ namespace TeamOps.UI.Forms
             var init = _service.GetInitialPayload();
             var endDate = DateTime.Today;
             var startDate = endDate.AddDays(-29);
+            var defaultSectorId = init.Sectors.Any(item => item.Id == _currentOperator.SectorId)
+                ? _currentOperator.SectorId
+                : init.Sectors.FirstOrDefault()?.Id ?? 0;
 
             PostJson(new
             {
@@ -118,7 +131,7 @@ namespace TeamOps.UI.Forms
                     {
                         startDateIso = startDate.ToString("yyyy-MM-dd"),
                         endDateIso = endDate.ToString("yyyy-MM-dd"),
-                        sectorId = _currentOperator.SectorId,
+                        sectorId = defaultSectorId,
                         localId = 0,
                         shiftId = 0,
                         groupId = 0,
