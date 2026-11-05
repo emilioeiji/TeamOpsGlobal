@@ -90,6 +90,11 @@
         public int accessLevel { get; set; }
         public string password { get; set; } = string.Empty;
         public string confirmPassword { get; set; } = string.Empty;
+        public int userId { get; set; }
+        public string profileCode { get; set; } = string.Empty;
+        public int referenceNodeId { get; set; }
+        public List<int> sectorIds { get; set; } = new();
+        public bool isActive { get; set; } = true;
 
         // ============================
         // TASKS

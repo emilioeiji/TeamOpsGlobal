@@ -3,7 +3,9 @@ const state = {
 };
 
 let rows = [];
-let accessLevels = [];
+let profiles = [];
+let organizationNodes = [];
+let sectors = [];
 let currentModalMode = "create";
 let editingLogin = "";
 let passwordTargetLogin = "";
@@ -123,6 +125,7 @@ window.addEventListener("DOMContentLoaded", () => {
 function bindEvents() {
     document.getElementById("searchInput").addEventListener("input", applyFilters);
     document.getElementById("btnHeaderNovo").addEventListener("click", openCreateModal);
+    document.getElementById("cmbProfile").addEventListener("change", syncScopeMode);
 
     document.getElementById("btnCloseUserModal").addEventListener("click", closeUserModal);
     document.getElementById("btnCancelUserModal").addEventListener("click", closeUserModal);
@@ -151,7 +154,7 @@ window.chrome.webview.addEventListener("message", event => {
             hydrateScreen(msg);
             break;
         case "rows":
-            rows = normalizeRows(msg.data || []);
+            rows = normalizeRows(msg.rows || msg.data || []);
             renderMetrics(rows);
             applyFilters();
             syncEditingUser();
@@ -175,10 +178,14 @@ window.chrome.webview.addEventListener("message", event => {
 });
 
 function hydrateScreen(payload) {
-    accessLevels = payload.accessLevels || [];
+    profiles = payload.profiles || [];
+    organizationNodes = payload.organizationNodes || [];
+    sectors = payload.sectors || [];
     rows = normalizeRows(payload.rows || []);
 
-    fillSelect("cmbAccessLevel", accessLevels, "value", "label");
+    fillSelect("cmbProfile", profiles.map(item => ({ ...item, label: state.locale === "ja-JP" ? item.nameJp : item.namePt })), "code", "label");
+    fillSelect("cmbReferenceNode", organizationNodes.map(item => ({ ...item, label: `${item.code} - ${state.locale === "ja-JP" ? item.nameJp : item.namePt}` })), "id", "label");
+    fillSelect("cmbSectorIds", sectors.map(item => ({ ...item, label: `${item.code} - ${state.locale === "ja-JP" ? item.nameJp : item.namePt}` })), "id", "label");
     renderMetrics(rows);
     resetUserForm();
     applyFilters();
@@ -205,8 +212,8 @@ function setLocale(locale) {
 function normalizeRows(items) {
     return items.map(item => ({
         ...item,
-        accessLevel: Number(item.accessLevel || 0),
-        accessLabel: item.accessLabel || getAccessLabel(item.accessLevel),
+        profileLabel: state.locale === "ja-JP" ? item.profileNameJp : item.profileNamePt,
+        sectorIds: (item.sectorIds || []).map(Number),
         codigoFJ: item.codigoFJ || "",
         name: item.name || ""
     }));
@@ -214,7 +221,7 @@ function normalizeRows(items) {
 
 function fillSelect(id, items, valueField, textField) {
     const select = document.getElementById(id);
-    select.innerHTML = `<option value="">${escapeHtml(t("selectPlaceholder"))}</option>`;
+    select.innerHTML = select.multiple ? "" : `<option value="">${escapeHtml(t("selectPlaceholder"))}</option>`;
 
     items.forEach(item => {
         select.innerHTML += `<option value="${item[valueField]}">${escapeHtml(item[textField])}</option>`;
@@ -223,8 +230,8 @@ function fillSelect(id, items, valueField, textField) {
 
 function renderMetrics(items) {
     document.getElementById("metricTotal").textContent = String(items.length);
-    document.getElementById("metricAdmins").textContent = String(items.filter(item => item.accessLevel === 5).length);
-    document.getElementById("metricManagers").textContent = String(items.filter(item => item.accessLevel >= 4).length);
+    document.getElementById("metricAdmins").textContent = String(items.filter(item => item.profileCode === "MANAGER").length);
+    document.getElementById("metricManagers").textContent = String(items.filter(item => ["MANAGER", "SV"].includes(item.profileCode)).length);
 }
 
 function applyFilters() {
@@ -237,7 +244,8 @@ function applyFilters() {
             item.login,
             item.name,
             item.codigoFJ,
-            item.accessLabel
+            item.profileLabel,
+            item.referenceCode
         ]
             .filter(Boolean)
             .join(" ")
@@ -276,14 +284,14 @@ function renderTable(items) {
         const selectedClass = item.login === editingLogin ? "is-selected" : "";
         const displayName = item.name || "-";
         const displayCodigoFJ = item.codigoFJ || "-";
-        const accessClass = `access-${Number(item.accessLevel || 0)}`;
+        const accessClass = `access-${String(item.profileCode || "").toLowerCase()}`;
 
         html += `
             <tr class="${selectedClass}">
                 <td>${escapeHtml(item.login)}</td>
                 <td>${escapeHtml(displayName)}</td>
                 <td>${escapeHtml(displayCodigoFJ)}</td>
-                <td><span class="access-pill ${accessClass}">${escapeHtml(item.accessLabel)}</span></td>
+                <td><span class="access-pill ${accessClass}">${escapeHtml(item.profileLabel)} · ${escapeHtml(item.referenceCode)}</span></td>
                 <td>${escapeHtml(item.createdAt || "-")}</td>
                 <td class="actions-cell">
                     <button class="row-btn row-btn-edit" type="button" data-edit="${escapeHtmlAttr(item.login)}">${escapeHtml(t("edit"))}</button>
@@ -330,11 +338,16 @@ function openEditModal(login) {
     document.getElementById("txtLogin").value = user.login || "";
     document.getElementById("txtLogin").readOnly = true;
     document.getElementById("txtName").value = user.name || "";
-    document.getElementById("cmbAccessLevel").value = String(user.accessLevel || "");
+    document.getElementById("txtCodigoFJ").value = user.codigoFJ || "";
+    document.getElementById("cmbProfile").value = user.profileCode || "";
+    document.getElementById("cmbReferenceNode").value = String(user.referenceNodeId || "");
+    setSelectedValues("cmbSectorIds", user.sectorIds || []);
+    document.getElementById("chkIsActive").checked = user.isActive !== false;
     document.getElementById("txtPassword").value = "";
     document.getElementById("txtConfirmPassword").value = "";
 
     syncUserModeState();
+    syncScopeMode();
     applyFilters();
     document.getElementById("userModal").classList.remove("hidden");
 }
@@ -358,10 +371,15 @@ function resetUserForm() {
     document.getElementById("txtLogin").value = "";
     document.getElementById("txtLogin").readOnly = false;
     document.getElementById("txtName").value = "";
-    document.getElementById("cmbAccessLevel").value = "";
+    document.getElementById("txtCodigoFJ").value = "";
+    document.getElementById("cmbProfile").value = "";
+    document.getElementById("cmbReferenceNode").value = "";
+    setSelectedValues("cmbSectorIds", []);
+    document.getElementById("chkIsActive").checked = true;
     document.getElementById("txtPassword").value = "";
     document.getElementById("txtConfirmPassword").value = "";
     syncUserModeState();
+    syncScopeMode();
     applyFilters();
 }
 
@@ -392,9 +410,14 @@ function submitUserModal() {
 
 function buildUserPayload(includePassword) {
     return {
+        userId: currentModalMode === "edit" ? Number(rows.find(item => item.login === editingLogin)?.id || 0) : 0,
         login: document.getElementById("txtLogin").value.trim(),
+        codigoFJ: document.getElementById("txtCodigoFJ").value.trim(),
         name: document.getElementById("txtName").value.trim(),
-        accessLevel: Number(document.getElementById("cmbAccessLevel").value || 0),
+        profileCode: document.getElementById("cmbProfile").value,
+        referenceNodeId: Number(document.getElementById("cmbReferenceNode").value || 0),
+        sectorIds: getSelectedValues("cmbSectorIds"),
+        isActive: document.getElementById("chkIsActive").checked,
         password: includePassword ? document.getElementById("txtPassword").value : "",
         confirmPassword: includePassword ? document.getElementById("txtConfirmPassword").value : ""
     };
@@ -428,15 +451,28 @@ function submitPasswordReset() {
     }
 
     send("reset_password", {
+        userId: Number(rows.find(item => item.login === passwordTargetLogin)?.id || 0),
         login: passwordTargetLogin,
         password: document.getElementById("txtNewPassword").value,
         confirmPassword: document.getElementById("txtConfirmNewPassword").value
     });
 }
 
-function getAccessLabel(accessLevel) {
-    const match = accessLevels.find(item => Number(item.value) === Number(accessLevel));
-    return match ? match.label : "-";
+function syncScopeMode() {
+    const profile = profiles.find(item => item.code === document.getElementById("cmbProfile").value);
+    const assigned = profile?.scopeMode === "AssignedSectors";
+    document.getElementById("sectorAccessGroup").classList.toggle("hidden", !assigned);
+    document.getElementById("cmbSectorIds").disabled = !assigned;
+    if (!assigned) setSelectedValues("cmbSectorIds", []);
+}
+
+function getSelectedValues(id) {
+    return Array.from(document.getElementById(id).selectedOptions).map(option => Number(option.value));
+}
+
+function setSelectedValues(id, values) {
+    const selected = new Set((values || []).map(Number));
+    Array.from(document.getElementById(id).options).forEach(option => { option.selected = selected.has(Number(option.value)); });
 }
 
 function t(key) {

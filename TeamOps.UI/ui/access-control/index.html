@@ -78,8 +78,8 @@
                 </div>
 
                 <div class="form-group">
-                    <label for="cmbAccessLevel" data-i18n="accessLevelLabel">Nivel de Acesso</label>
-                    <select id="cmbAccessLevel" class="input">
+                    <label for="cmbProfile" data-i18n="accessLevelLabel">Perfil de Acesso</label>
+                    <select id="cmbProfile" class="input">
                         <option value="" data-i18n="selectPlaceholder">Selecione...</option>
                     </select>
                 </div>
@@ -87,6 +87,25 @@
                 <div class="form-group form-group-span-2">
                     <label for="txtName" data-i18n="nameLabel">Nome</label>
                     <input id="txtName" class="input" type="text" maxlength="120" data-i18n-placeholder="namePlaceholder" placeholder="Opcional, mas ajuda a localizar mais rapido">
+                </div>
+
+                <div class="form-group">
+                    <label for="txtCodigoFJ">Codigo FJ</label>
+                    <input id="txtCodigoFJ" class="input" type="text" maxlength="40" placeholder="Opcional para administracao pura">
+                </div>
+
+                <div class="form-group">
+                    <label for="cmbReferenceNode">Referencia organizacional</label>
+                    <select id="cmbReferenceNode" class="input"></select>
+                </div>
+
+                <div id="sectorAccessGroup" class="form-group form-group-span-2">
+                    <label for="cmbSectorIds">Setores autorizados</label>
+                    <select id="cmbSectorIds" class="input" multiple size="5"></select>
+                </div>
+
+                <div class="form-group form-group-span-2">
+                    <label><input id="chkIsActive" type="checkbox" checked> Usuario ativo</label>
                 </div>
             </div>
 

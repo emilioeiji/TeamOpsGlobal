@@ -15,6 +15,7 @@ using TeamOps.Data.Db;
 using TeamOps.Data.Repositories;
 using TeamOps.UI.Services;
 using TeamOps.Core.Security;
+using TeamOps.Data.Security;
 
 namespace TeamOps.UI.Forms
 {
@@ -25,6 +26,7 @@ namespace TeamOps.UI.Forms
         private readonly Shift _currentShift;
         private readonly SqliteConnectionFactory _factory;
         private readonly bool _hasOperationalIdentity;
+        private readonly AuthorizationService _authorization;
 
         public FormDashboardHtml(User user)
         {
@@ -54,6 +56,7 @@ namespace TeamOps.UI.Forms
                 : new Shift { Id = 0, NamePt = "Administracao", NameJp = "管理" };
 
             _factory = Program.ConnectionFactory;
+            _authorization = new AuthorizationService(_factory);
 
             InitializeWebView();
         }
@@ -271,14 +274,14 @@ namespace TeamOps.UI.Forms
                     break;
 
                 case "open:admin":
-                    if (!HasAccess(AccessLevel.Admin))
+                    if (!_authorization.IsAllowed(_user.Id, ModuleCodes.Organization, PermissionActions.Administer))
                         ShowAccessDeniedAsync();
                     else
                         OpenDialog(() => new HTMLFormAdmin());
                     break;
 
                 case "open:accesscontrol":
-                    if (!HasAccess(AccessLevel.Admin))
+                    if (!_authorization.IsAllowed(_user.Id, ModuleCodes.AccessControl, PermissionActions.Administer))
                         ShowAccessDeniedAsync();
                     else
                         OpenDialog(() => new HTMLFormAccessControl());

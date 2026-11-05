@@ -82,13 +82,7 @@ namespace TeamOps.Data.Security
                 throw new ArgumentException("O login deve possuir pelo menos 4 caracteres.", nameof(login));
             if (name.Length < 2)
                 throw new ArgumentException("Informe o nome do administrador.", nameof(name));
-            if (password.Length < 12 || !password.Any(char.IsUpper) || !password.Any(char.IsLower)
-                || !password.Any(char.IsDigit) || !password.Any(ch => !char.IsLetterOrDigit(ch)))
-            {
-                throw new ArgumentException(
-                    "A senha deve ter ao menos 12 caracteres, com maiuscula, minuscula, numero e simbolo.",
-                    nameof(password));
-            }
+            PasswordPolicy.DemandStrong(password);
         }
     }
 }
