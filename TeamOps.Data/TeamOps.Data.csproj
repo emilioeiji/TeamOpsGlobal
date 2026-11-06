@@ -76,9 +76,6 @@
     <None Update="Sql\Hikitsugui\select_hikitsugui_by_id.sql">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Sql\Hikitsugui\select_hikitsugui_for_leader.sql">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
     <None Update="Sql\Hikitsugui\select_locals.sql">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>

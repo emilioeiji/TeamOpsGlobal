@@ -100,8 +100,7 @@ public sealed class PaidLeaveAuthorizationTests
             Login = codigoFJ,
             CodigoFJ = codigoFJ,
             Name = codigoFJ,
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword("test-password"),
-            AccessLevel = AccessLevel.Basic
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword("test-password")
         });
         var reference = new OrganizationRepository(context.Factory).GetByCode(referenceCode)!;
         var sectorIds = sectorCodes.Select(code => GetSectorId(context, code));

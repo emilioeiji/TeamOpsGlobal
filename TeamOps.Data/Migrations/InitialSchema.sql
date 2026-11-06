@@ -72,7 +72,7 @@ CREATE TABLE IF NOT EXISTS Users (
     CodigoFJ     TEXT,
     Name         TEXT,
     PasswordHash TEXT     NOT NULL,
-    AccessLevel  INTEGER  NOT NULL,
+    AccessLevel  INTEGER  NOT NULL DEFAULT 1, -- compatibilidade legada; autorizacao usa ProfileId
     CreatedAt    DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (
         CodigoFJ

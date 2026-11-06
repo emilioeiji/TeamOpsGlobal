@@ -168,8 +168,7 @@ public sealed class HikitsuguiAudienceTests
             Login = codigoFJ,
             CodigoFJ = codigoFJ,
             Name = codigoFJ,
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword("test-password"),
-            AccessLevel = AccessLevel.Basic
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword("test-password")
         });
         new UserAccessRepository(context.Factory).Configure(
             userId,

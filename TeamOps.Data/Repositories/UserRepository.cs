@@ -16,7 +16,8 @@ namespace TeamOps.Data.Repositories
             using var conn = _factory.CreateOpenConnection();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-                SELECT Id, Login, CodigoFJ, Name, PasswordHash, AccessLevel, CreatedAt
+                SELECT Id, Login, CodigoFJ, Name, PasswordHash, CreatedAt,
+                       ProfileId, ReferenceNodeId, IsActive, SessionVersion
                 FROM Users
                 WHERE Login = @login";
             cmd.Parameters.AddWithValue("@login", login);
@@ -31,8 +32,11 @@ namespace TeamOps.Data.Repositories
                 CodigoFJ = reader.IsDBNull(2) ? null : reader.GetString(2),
                 Name = reader.IsDBNull(3) ? "" : reader.GetString(3),
                 PasswordHash = reader.GetString(4),
-                AccessLevel = (AccessLevel)reader.GetInt32(5),
-                CreatedAt = reader.GetDateTime(6)
+                CreatedAt = reader.GetDateTime(5),
+                ProfileId = reader.IsDBNull(6) ? null : reader.GetInt32(6),
+                ReferenceNodeId = reader.IsDBNull(7) ? null : reader.GetInt32(7),
+                IsActive = reader.GetInt32(8) == 1,
+                SessionVersion = reader.GetInt32(9)
             };
         }
 
@@ -42,14 +46,18 @@ namespace TeamOps.Data.Repositories
             using var conn = _factory.CreateOpenConnection();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-                INSERT INTO Users (Login, CodigoFJ, Name, PasswordHash, AccessLevel)
-                VALUES (@login, @codFJ, @name, @pass, @level);
+                INSERT INTO Users (Login, CodigoFJ, Name, PasswordHash, AccessLevel, ProfileId,
+                                   ReferenceNodeId, IsActive)
+                VALUES (@login, @codFJ, @name, @pass, 1, @profileId,
+                        @referenceNodeId, @isActive);
                 SELECT last_insert_rowid();";
             cmd.Parameters.AddWithValue("@login", user.Login);
             cmd.Parameters.AddWithValue("@codFJ", user.CodigoFJ ?? (object)DBNull.Value);
             cmd.Parameters.AddWithValue("@name", user.Name);
             cmd.Parameters.AddWithValue("@pass", user.PasswordHash);
-            cmd.Parameters.AddWithValue("@level", user.AccessLevel);
+            cmd.Parameters.AddWithValue("@profileId", user.ProfileId ?? (object)DBNull.Value);
+            cmd.Parameters.AddWithValue("@referenceNodeId", user.ReferenceNodeId ?? (object)DBNull.Value);
+            cmd.Parameters.AddWithValue("@isActive", user.IsActive ? 1 : 0);
             return checked((int)(long)cmd.ExecuteScalar()!);
         }
 
@@ -61,7 +69,8 @@ namespace TeamOps.Data.Repositories
             using var conn = _factory.CreateOpenConnection();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-                SELECT Id, Login, CodigoFJ, Name, PasswordHash, AccessLevel, CreatedAt
+                SELECT Id, Login, CodigoFJ, Name, PasswordHash, CreatedAt,
+                       ProfileId, ReferenceNodeId, IsActive, SessionVersion
                 FROM Users";
 
             using var reader = cmd.ExecuteReader();
@@ -74,25 +83,30 @@ namespace TeamOps.Data.Repositories
                     CodigoFJ = reader.IsDBNull(2) ? null : reader.GetString(2),
                     Name = reader.IsDBNull(3) ? "" : reader.GetString(3),
                     PasswordHash = reader.GetString(4),
-                    AccessLevel = (AccessLevel)reader.GetInt32(5),
-                    CreatedAt = reader.GetDateTime(6)
+                    CreatedAt = reader.GetDateTime(5),
+                    ProfileId = reader.IsDBNull(6) ? null : reader.GetInt32(6),
+                    ReferenceNodeId = reader.IsDBNull(7) ? null : reader.GetInt32(7),
+                    IsActive = reader.GetInt32(8) == 1,
+                    SessionVersion = reader.GetInt32(9)
                 });
             }
 
             return users;
         }
 
-        // 🔹 Atualiza senha e nível de acesso
+        // Atualiza somente dados de identidade. Permissoes sao administradas pelo UserAccessRepository.
         public void Update(User user)
         {
             using var conn = _factory.CreateOpenConnection();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
                 UPDATE Users 
-                SET PasswordHash = @pass, AccessLevel = @level, Name = @name
+                SET PasswordHash = @pass,
+                    Name = @name,
+                    PasswordChangedAt = CURRENT_TIMESTAMP,
+                    SessionVersion = SessionVersion + 1
                 WHERE Login = @login";
             cmd.Parameters.AddWithValue("@pass", user.PasswordHash);
-            cmd.Parameters.AddWithValue("@level", user.AccessLevel);
             cmd.Parameters.AddWithValue("@name", user.Name);
             cmd.Parameters.AddWithValue("@login", user.Login);
             cmd.ExecuteNonQuery();

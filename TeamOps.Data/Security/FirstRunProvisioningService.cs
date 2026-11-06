@@ -46,7 +46,7 @@ namespace TeamOps.Data.Security
                     INSERT INTO Users
                         (Login, CodigoFJ, Name, PasswordHash, AccessLevel, ProfileId,
                          ReferenceNodeId, IsActive, PasswordChangedAt)
-                    SELECT @login, NULL, @name, @passwordHash, @legacyAccessLevel,
+                    SELECT @login, NULL, @name, @passwordHash, 1,
                            profile.Id, root.Id, 1, CURRENT_TIMESTAMP
                     FROM AccessProfiles profile
                     CROSS JOIN OrganizationNodes root
@@ -55,7 +55,6 @@ namespace TeamOps.Data.Security
                 insert.Parameters.AddWithValue("@login", normalizedLogin);
                 insert.Parameters.AddWithValue("@name", normalizedName);
                 insert.Parameters.AddWithValue("@passwordHash", passwordHash);
-                insert.Parameters.AddWithValue("@legacyAccessLevel", (int)AccessLevel.Admin);
                 userId = checked((int)(long)insert.ExecuteScalar()!);
                 if (userId <= 0)
                     throw new InvalidOperationException("Perfil Diretor ou unidade 5500 nao foi encontrado.");

@@ -35,7 +35,7 @@ namespace TeamOps.Data.Security
             {
                 select.Transaction = transaction;
                 select.CommandText = @"
-                    SELECT Id, Login, CodigoFJ, Name, PasswordHash, AccessLevel, CreatedAt,
+                    SELECT Id, Login, CodigoFJ, Name, PasswordHash, CreatedAt,
                            ProfileId, ReferenceNodeId, IsActive, FailedLoginAttempts,
                            LockedUntil, SessionVersion
                     FROM Users
@@ -52,14 +52,13 @@ namespace TeamOps.Data.Security
                         CodigoFJ = reader.IsDBNull(2) ? null : reader.GetString(2),
                         Name = reader.IsDBNull(3) ? string.Empty : reader.GetString(3),
                         PasswordHash = passwordHash,
-                        AccessLevel = (AccessLevel)reader.GetInt32(5),
-                        CreatedAt = reader.GetDateTime(6),
-                        ProfileId = reader.IsDBNull(7) ? null : reader.GetInt32(7),
-                        ReferenceNodeId = reader.IsDBNull(8) ? null : reader.GetInt32(8),
-                        IsActive = reader.GetInt32(9) == 1,
-                        FailedLoginAttempts = reader.GetInt32(10),
-                        LockedUntilUtc = ParseUtc(reader.IsDBNull(11) ? null : reader.GetString(11)),
-                        SessionVersion = reader.GetInt32(12)
+                        CreatedAt = reader.GetDateTime(5),
+                        ProfileId = reader.IsDBNull(6) ? null : reader.GetInt32(6),
+                        ReferenceNodeId = reader.IsDBNull(7) ? null : reader.GetInt32(7),
+                        IsActive = reader.GetInt32(8) == 1,
+                        FailedLoginAttempts = reader.GetInt32(9),
+                        LockedUntilUtc = ParseUtc(reader.IsDBNull(10) ? null : reader.GetString(10)),
+                        SessionVersion = reader.GetInt32(11)
                     };
                 }
             }

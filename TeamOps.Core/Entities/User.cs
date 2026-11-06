@@ -9,7 +9,6 @@ namespace TeamOps.Core.Entities
         public string? CodigoFJ { get; set; }                   // opcional
         public string Name { get; set; } = string.Empty;
         public string PasswordHash { get; set; } = string.Empty;
-        public AccessLevel AccessLevel { get; set; } = AccessLevel.Basic;
         public int? ProfileId { get; set; }
         public int? ReferenceNodeId { get; set; }
         public bool IsActive { get; set; } = true;

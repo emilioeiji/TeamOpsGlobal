@@ -149,8 +149,7 @@ public sealed class AuthorizationTests
             Login = codigoFJ,
             CodigoFJ = codigoFJ,
             Name = codigoFJ,
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword("test-password"),
-            AccessLevel = AccessLevel.Basic
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword("test-password")
         });
     }
 

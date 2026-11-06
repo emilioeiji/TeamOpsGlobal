@@ -48,14 +48,13 @@ namespace TeamOps.Data.Security
             using var conn = _factory.CreateOpenConnection();
             using var transaction = conn.BeginTransaction();
             var target = ValidateTargetConfiguration(conn, transaction, actor, request, null);
-            var legacyLevel = ToLegacyAccessLevel(target.HierarchyRank);
             var hash = BCrypt.Net.BCrypt.HashPassword(password, workFactor: 12);
             var userId = conn.ExecuteScalar<int>(@"
                 INSERT INTO Users
                     (Login, CodigoFJ, Name, PasswordHash, AccessLevel, ProfileId, ReferenceNodeId,
                      IsActive, PasswordChangedAt, SessionVersion)
                 VALUES
-                    (@Login, @CodigoFJ, @Name, @hash, @legacyLevel, @profileId, @ReferenceNodeId,
+                    (@Login, @CodigoFJ, @Name, @hash, 1, @profileId, @ReferenceNodeId,
                      @isActive, CURRENT_TIMESTAMP, 1);
                 SELECT last_insert_rowid();",
                 new
@@ -64,7 +63,6 @@ namespace TeamOps.Data.Security
                     CodigoFJ = NullIfWhiteSpace(request.CodigoFJ),
                     Name = request.Name.Trim(),
                     hash,
-                    legacyLevel,
                     profileId = target.Id,
                     request.ReferenceNodeId,
                     isActive = request.IsActive ? 1 : 0
@@ -87,7 +85,6 @@ namespace TeamOps.Data.Security
                 UPDATE Users
                 SET CodigoFJ = @CodigoFJ,
                     Name = @Name,
-                    AccessLevel = @legacyLevel,
                     ProfileId = @profileId,
                     ReferenceNodeId = @ReferenceNodeId,
                     IsActive = @isActive,
@@ -99,7 +96,6 @@ namespace TeamOps.Data.Security
                     Login = request.Login.Trim(),
                     CodigoFJ = NullIfWhiteSpace(request.CodigoFJ),
                     Name = request.Name.Trim(),
-                    legacyLevel = ToLegacyAccessLevel(target.HierarchyRank),
                     profileId = target.Id,
                     request.ReferenceNodeId,
                     isActive = request.IsActive ? 1 : 0
@@ -253,14 +249,6 @@ namespace TeamOps.Data.Security
         }
 
         private static string? NullIfWhiteSpace(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
-        private static int ToLegacyAccessLevel(int rank) => rank switch
-        {
-            >= 5 => (int)AccessLevel.Admin,
-            4 => (int)AccessLevel.Manager,
-            3 => (int)AccessLevel.GL,
-            2 => (int)AccessLevel.KL,
-            _ => (int)AccessLevel.Basic
-        };
         private static string Describe(UserAdministrationSaveRequest request) =>
             $"Profile={request.ProfileCode};Reference={request.ReferenceNodeId};Sectors={string.Join(',', request.SectorIds.Distinct())};Active={request.IsActive}";
 

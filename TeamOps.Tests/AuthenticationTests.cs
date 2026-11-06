@@ -96,6 +96,29 @@ public sealed class AuthenticationTests
         Assert.Equal("invalid_credentials", result.ErrorCode);
     }
 
+    [Fact]
+    public void Authentication_IgnoresLegacyAccessLevelColumn()
+    {
+        using var context = new DatabaseTestContext();
+        var userId = new FirstRunProvisioningService(context.Factory)
+            .ProvisionDirector("schema.v2.director", "Schema V2 Director", StrongPassword);
+
+        using (var conn = context.Factory.CreateOpenConnection())
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = "UPDATE Users SET AccessLevel = 999 WHERE Id = @id;";
+            cmd.Parameters.AddWithValue("@id", userId);
+            cmd.ExecuteNonQuery();
+        }
+
+        var result = new AuthenticationService(context.Factory)
+            .Authenticate("schema.v2.director", StrongPassword);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal("DIRECTOR", new AuthorizationService(context.Factory)
+            .GetContext(result.User!.Id).ProfileCode);
+    }
+
     [Theory]
     [InlineData("short")]
     [InlineData("alllowercase123!")]
