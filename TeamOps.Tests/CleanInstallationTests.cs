@@ -62,6 +62,9 @@ public sealed class CleanInstallationTests
         Assert.Equal(0, conn.ExecuteScalar<int>(@"
             SELECT COUNT(*) FROM pragma_table_info('Users')
             WHERE name = 'AccessLevel';"));
+        Assert.Equal(0, conn.ExecuteScalar<int>(@"
+            SELECT COUNT(*) FROM pragma_table_info('Hikitsugui')
+            WHERE name IN ('ForLeaders', 'ForOperators', 'ForMaSv');"));
     }
 
     [Fact]

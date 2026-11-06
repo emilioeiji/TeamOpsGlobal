@@ -20,7 +20,6 @@ namespace TeamOps.UI.Forms
         private readonly User _currentUser;
         private readonly Operator _currentOperator;
         private readonly HikitsuguiAudienceService _audienceService;
-        private readonly int _hierarchyRank;
         private int? _authorizedPreviewId;
 
         public HTMLFormHikitsuguiReader(
@@ -36,7 +35,6 @@ namespace TeamOps.UI.Forms
             _currentUser = currentUser;
             _currentOperator = currentOperator;
             _audienceService = new HikitsuguiAudienceService(factory);
-            _hierarchyRank = new AuthorizationService(factory).GetContext(currentUser.Id).HierarchyRank;
 
             InitializeWebView();
         }
@@ -81,7 +79,6 @@ namespace TeamOps.UI.Forms
                         SendMatrix(
                             ParseDateOrFallback(msg.dtInicial, DateTime.Today.AddMonths(-1)),
                             ParseDateOrFallback(msg.dtFinal, DateTime.Today),
-                            NormalizeAudience(msg.publico),
                             msg.shiftId,
                             msg.sectorId
                         );
@@ -145,16 +142,15 @@ namespace TeamOps.UI.Forms
                 sectors
             });
 
-            SendMatrix(start, end, "operators", 0, 0);
+            SendMatrix(start, end, 0, 0);
         }
 
-        private void SendMatrix(DateTime start, DateTime end, string audience, int shiftId, int sectorId)
+        private void SendMatrix(DateTime start, DateTime end, int shiftId, int sectorId)
         {
-            HikitsuguiAudienceTierPolicy.DemandCanFilter(_hierarchyRank, audience);
             using var conn = _factory.CreateOpenConnection();
 
-            var members = QueryMembers(conn, audience, shiftId, sectorId).ToList();
-            var hikitsuguis = QueryHikitsuguis(conn, start, end, audience, sectorId).ToList();
+            var members = QueryMembers(conn, shiftId, sectorId).ToList();
+            var hikitsuguis = QueryHikitsuguis(conn, start, end, sectorId).ToList();
             var reads = QueryReads(conn, start, end)
                 .GroupBy(item => item.HikitsuguiId)
                 .ToDictionary(
@@ -187,14 +183,13 @@ namespace TeamOps.UI.Forms
                 type = "matrix",
                 data = new
                 {
-                    audience,
                     members,
                     rows
                 }
             });
         }
 
-        private IEnumerable<object> QueryMembers(System.Data.IDbConnection conn, string audience, int shiftId, int sectorId)
+        private IEnumerable<object> QueryMembers(System.Data.IDbConnection conn, int shiftId, int sectorId)
         {
             const string sql = @"
                 SELECT
@@ -203,12 +198,8 @@ namespace TeamOps.UI.Forms
                     COALESCE(NULLIF(o.NameNihongo, ''), o.NameRomanji, o.CodigoFJ) AS NameJp,
                     o.ShiftId,
                     o.SectorId,
-                    COALESCE(o.GroupId, 0) AS GroupId,
-                    o.IsLeader,
-                    COALESCE(p.HierarchyRank, CASE WHEN COALESCE(o.IsLeader, 0) = 1 THEN 3 ELSE 1 END) AS HierarchyRank
+                    COALESCE(o.GroupId, 0) AS GroupId
                 FROM Operators o
-                LEFT JOIN Users u ON u.CodigoFJ = o.CodigoFJ
-                LEFT JOIN AccessProfiles p ON p.Id = u.ProfileId AND p.IsActive = 1
                 WHERE o.Status = 1
                 ORDER BY NameRomanji;";
 
@@ -216,13 +207,6 @@ namespace TeamOps.UI.Forms
             var authorizedSectorIds = Program.CurrentSession?.Access.AuthorizedSectorIds
                 ?? throw new InvalidOperationException("Sessao de acesso nao inicializada.");
             rows = rows.Where(row => row.SectorId.HasValue && authorizedSectorIds.Contains(row.SectorId.Value)).ToList();
-
-            rows = audience switch
-            {
-                "leaders" => rows.Where(row => row.IsLeader).ToList(),
-                "masv" => rows.Where(row => row.HierarchyRank >= 3).ToList(),
-                _ => rows.Where(row => !row.IsLeader).ToList()
-            };
 
             if (shiftId > 0)
             {
@@ -235,7 +219,7 @@ namespace TeamOps.UI.Forms
             }
 
             rows = rows
-                .OrderBy(row => audience == "operators" ? row.SectorId : row.GroupId)
+                .OrderBy(row => row.SectorId)
                 .ThenBy(row => row.GroupId)
                 .ThenBy(row => row.NamePt)
                 .ToList();
@@ -248,7 +232,7 @@ namespace TeamOps.UI.Forms
             });
         }
 
-        private IEnumerable<HikitsuguiRow> QueryHikitsuguis(System.Data.IDbConnection conn, DateTime start, DateTime end, string audience, int sectorId)
+        private IEnumerable<HikitsuguiRow> QueryHikitsuguis(System.Data.IDbConnection conn, DateTime start, DateTime end, int sectorId)
         {
             const string sql = @"
                 SELECT
@@ -256,9 +240,6 @@ namespace TeamOps.UI.Forms
                     h.Date,
                     h.ShiftId,
                     COALESCE(h.SectorId, 0) AS SectorId,
-                    h.ForLeaders,
-                    h.ForOperators,
-                    h.ForMaSv,
                     h.Description,
                     COALESCE(c.NamePt, '') AS CategoryPt,
                     COALESCE(NULLIF(c.NameJp, ''), c.NamePt, '') AS CategoryJp,
@@ -287,7 +268,6 @@ namespace TeamOps.UI.Forms
 
             rows = rows
                 .Where(row => visibleIds.Contains(row.Id))
-                .Where(row => MatchesAudience(row, audience))
                 .Where(row => sectorId == 0 || _audienceService.IsTargetedToSector(row.Id, sectorId))
                 .ToList();
 
@@ -455,27 +435,6 @@ namespace TeamOps.UI.Forms
                 : fallback.Date;
         }
 
-        private static string NormalizeAudience(string? value)
-        {
-            var normalized = (value ?? "operators").Trim().ToLowerInvariant();
-            return normalized switch
-            {
-                "leaders" => "leaders",
-                "masv" => "masv",
-                _ => "operators"
-            };
-        }
-
-        private static bool MatchesAudience(HikitsuguiRow row, string audience)
-        {
-            return audience switch
-            {
-                "leaders" => row.ForLeaders || row.ForOperators,
-                "masv" => row.ForMaSv,
-                _ => row.ForOperators
-            };
-        }
-
         private static string L(string pt, string jp)
         {
             return string.Equals(Program.CurrentLocale, "ja-JP", StringComparison.OrdinalIgnoreCase)
@@ -491,8 +450,6 @@ namespace TeamOps.UI.Forms
             public int ShiftId { get; set; }
             public int? SectorId { get; set; }
             public int GroupId { get; set; }
-            public bool IsLeader { get; set; }
-            public int HierarchyRank { get; set; }
         }
 
         private sealed class HikitsuguiRow
@@ -501,9 +458,6 @@ namespace TeamOps.UI.Forms
             public DateTime Date { get; set; }
             public int ShiftId { get; set; }
             public int? SectorId { get; set; }
-            public bool ForLeaders { get; set; }
-            public bool ForOperators { get; set; }
-            public bool ForMaSv { get; set; }
             public string Description { get; set; } = string.Empty;
             public string CategoryPt { get; set; } = string.Empty;
             public string CategoryJp { get; set; } = string.Empty;

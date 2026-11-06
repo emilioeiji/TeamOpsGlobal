@@ -20,7 +20,6 @@ namespace TeamOps.UI.Forms
         private readonly User _currentUser;
         private readonly Operator _currentLeader;
         private readonly HikitsuguiAudienceService _audienceService;
-        private readonly int _hierarchyRank;
         private int? _authorizedPreviewId;
 
         public HTMLHikitsuguiLeaderRead(
@@ -34,7 +33,6 @@ namespace TeamOps.UI.Forms
             _currentUser = currentUser;
             _currentLeader = currentLeader;
             _audienceService = new HikitsuguiAudienceService(factory);
-            _hierarchyRank = new AuthorizationService(factory).GetContext(currentUser.Id).HierarchyRank;
 
             InitializeWebView();
         }
@@ -163,13 +161,12 @@ namespace TeamOps.UI.Forms
                             locals,
                             sectors,
                             dtInicial,
-                            dtFinal,
-                            hierarchyRank = _hierarchyRank
+                            dtFinal
                         });
 
                         webViewHikitsugui.CoreWebView2.PostWebMessageAsJson(jsonFilters);
 
-                        SendLeaderRows(dtInicial, dtFinal, "todos", 0, 0, 0, 0, 0, "");
+                        SendLeaderRows(dtInicial, dtFinal, 0, 0, 0, 0, 0, "");
 
                         break;
                     }
@@ -179,7 +176,6 @@ namespace TeamOps.UI.Forms
                         SendLeaderRows(
                             (string)msg.dtInicial,
                             (string)msg.dtFinal,
-                            (string)msg.publico,
                             Convert.ToInt32(msg.shiftId),
                             Convert.ToInt32(msg.operatorId),
                             Convert.ToInt32(msg.reasonId),
@@ -208,7 +204,6 @@ namespace TeamOps.UI.Forms
                         SendLeaderRows(
                             (string)msg.dtInicial,
                             (string)msg.dtFinal,
-                            (string)msg.publico,
                             Convert.ToInt32(msg.shiftId),
                             Convert.ToInt32(msg.operatorId),
                             Convert.ToInt32(msg.reasonId),
@@ -230,7 +225,6 @@ namespace TeamOps.UI.Forms
                         SendLeaderRows(
                             (string)msg.dtInicial,
                             (string)msg.dtFinal,
-                            (string)msg.publico,
                             Convert.ToInt32(msg.shiftId),
                             Convert.ToInt32(msg.operatorId),
                             Convert.ToInt32(msg.reasonId),
@@ -443,7 +437,6 @@ namespace TeamOps.UI.Forms
                             SendLeaderRows(
                                 (string)msg.dtInicial,
                                 (string)msg.dtFinal,
-                                (string)msg.publico,
                                 Convert.ToInt32(msg.shiftId),
                                 Convert.ToInt32(msg.operatorId),
                                 Convert.ToInt32(msg.reasonId),
@@ -555,7 +548,6 @@ namespace TeamOps.UI.Forms
                             }
 
                             tran.Commit();
-                            _audienceService.SetSectorAudience(_currentUser.Id, id, [msg.sectorId]);
 
                             try
                             {
@@ -576,7 +568,6 @@ namespace TeamOps.UI.Forms
                             SendLeaderRows(
                                 (string)msg.dtInicial,
                                 (string)msg.dtFinal,
-                                (string)msg.publico,
                                 Convert.ToInt32(msg.shiftId),
                                 Convert.ToInt32(msg.operatorId),
                                 Convert.ToInt32(msg.reasonId),
@@ -626,7 +617,6 @@ namespace TeamOps.UI.Forms
         private void SendLeaderRows(
             string dtInicial,
             string dtFinal,
-            string publico,
             int shiftId,
             int operatorId,
             int reasonId,
@@ -634,8 +624,6 @@ namespace TeamOps.UI.Forms
             int sectorId,
             string search)
         {
-            HikitsuguiAudienceTierPolicy.DemandCanFilter(_hierarchyRank, publico);
-
             const string sql = @"
                 SELECT DISTINCT
                     h.Id,
@@ -669,19 +657,6 @@ namespace TeamOps.UI.Forms
                     AND r.ReaderCodigoFJ = @codigoFJ
                 WHERE 1=1
                   AND h.Date BETWEEN @dtInicial AND @dtFinal
-                  AND (
-                        (@publico = 'operador' AND h.ForOperators = 1)
-                        OR (@publico = 'lider' AND @hierarchyRank >= 2 AND h.ForLeaders = 1)
-                        OR (@publico = 'masv' AND @hierarchyRank >= 3 AND h.ForMaSv = 1)
-                        OR (
-                            @publico = 'todos'
-                            AND (
-                                (@hierarchyRank = 1 AND h.ForOperators = 1)
-                                OR (@hierarchyRank = 2 AND (h.ForOperators = 1 OR h.ForLeaders = 1))
-                                OR (@hierarchyRank >= 3 AND (h.ForOperators = 1 OR h.ForLeaders = 1 OR h.ForMaSv = 1))
-                            )
-                        )
-                    )
                   AND (@shiftId = 0 OR h.ShiftId = @shiftId)
                   AND (@operatorId = 0 OR h.CreatorCodigoFJ = @operatorId)
                   AND (@reasonId = 0 OR h.CategoryId = @reasonId)
@@ -711,15 +686,13 @@ namespace TeamOps.UI.Forms
             {
                 dtInicial,
                 dtFinal,
-                publico,
                 shiftId,
                 operatorId,
                 reasonId,
                 equipId,
                 sectorId,
                 codigoFJ = _currentLeader.CodigoFJ,
-                search,
-                hierarchyRank = _hierarchyRank
+                search
             }).Where(row => visibleIds.Contains((int)row.Id))
               .Where(row => sectorId == 0 || _audienceService.IsTargetedToSector((int)row.Id, sectorId))
               .Select(row => new

@@ -10,15 +10,12 @@ const I18N = {
     "pt-BR": {
         title: "Leitura de Hikitsugui",
         headerTitle: "Leitura de Hikitsugui",
-        headerSubtitle: "Matriz de leitura por publico, turno e setor, no padrao TeamOps HTML.",
+        headerSubtitle: "Matriz de leitura por turno e setor autorizado, no padrao TeamOps HTML.",
         metaOperator: "Operador",
         startDate: "Data Inicial",
         endDate: "Data Final",
         shift: "Turno",
         sector: "Setor",
-        audienceOperators: "Operadores",
-        audienceLeaders: "Lideres",
-        audienceMasv: "MA/SV",
         filterButton: "Atualizar Matriz",
         matrixTitle: "Matriz de leitura",
         matrixSubtitle: "Cada coluna representa um operador ou lider. Clique no card do hikitsugui para abrir o preview.",
@@ -46,15 +43,12 @@ const I18N = {
     "ja-JP": {
         title: "Hikitsugui Read Matrix",
         headerTitle: "Hikitsugui Read Matrix",
-        headerSubtitle: "\u516c\u958b\u5148\u3001\u30b7\u30d5\u30c8\u3001\u30bb\u30af\u30bf\u30fc\u5225\u306e\u95b2\u89a7\u30de\u30c8\u30ea\u30af\u30b9\u3092 TeamOps HTML \u6a19\u6e96\u3067\u8868\u793a\u3057\u307e\u3059\u3002",
+        headerSubtitle: "\u8a31\u53ef\u3055\u308c\u305f\u30b7\u30d5\u30c8\u3068\u30bb\u30af\u30bf\u30fc\u5225\u306e\u95b2\u89a7\u30de\u30c8\u30ea\u30af\u30b9\u3092 TeamOps HTML \u6a19\u6e96\u3067\u8868\u793a\u3057\u307e\u3059\u3002",
         metaOperator: "\u30aa\u30da\u30ec\u30fc\u30bf\u30fc",
         startDate: "\u958b\u59cb\u65e5",
         endDate: "\u7d42\u4e86\u65e5",
         shift: "\u30b7\u30d5\u30c8",
         sector: "\u30bb\u30af\u30bf\u30fc",
-        audienceOperators: "\u30aa\u30da\u30ec\u30fc\u30bf\u30fc",
-        audienceLeaders: "\u30ea\u30fc\u30c0\u30fc",
-        audienceMasv: "MA/SV",
         filterButton: "\u30de\u30c8\u30ea\u30af\u30b9\u66f4\u65b0",
         matrixTitle: "\u95b2\u89a7\u30de\u30c8\u30ea\u30af\u30b9",
         matrixSubtitle: "\u5404\u5217\u306f\u30aa\u30da\u30ec\u30fc\u30bf\u30fc\u307e\u305f\u306f\u30ea\u30fc\u30c0\u30fc\u3067\u3059\u3002Hikitsugui \u30ab\u30fc\u30c9\u3092\u30af\u30ea\u30c3\u30af\u3059\u308b\u3068\u8a73\u7d30\u3092\u8868\u793a\u3057\u307e\u3059\u3002",
@@ -159,9 +153,6 @@ function applyLocale() {
     setText("txtEndDate", t("endDate"));
     setText("txtShift", t("shift"));
     setText("txtSector", t("sector"));
-    setText("txtAudienceOperators", t("audienceOperators"));
-    setText("txtAudienceLeaders", t("audienceLeaders"));
-    setText("txtAudienceMasv", t("audienceMasv"));
     setText("btnFilter", t("filterButton"));
     setText("txtMatrixTitle", t("matrixTitle"));
     setText("txtMatrixSubtitle", t("matrixSubtitle"));
@@ -315,7 +306,6 @@ function applyFilters() {
     send("filter", {
         dtInicial: document.getElementById("startDate").value,
         dtFinal: document.getElementById("endDate").value,
-        publico: document.querySelector("input[name='audience']:checked")?.value || "operators",
         shiftId: Number(document.getElementById("shiftId").value || 0),
         sectorId: Number(document.getElementById("sectorId").value || 0)
     });

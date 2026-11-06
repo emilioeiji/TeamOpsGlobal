@@ -21,7 +21,8 @@
         // ============================
         // FILTROS DO HIKITSUGUI
         // ============================
-        public string publico { get; set; } = string.Empty;
+        public string audienceType { get; set; } = string.Empty;
+        public int organizationNodeId { get; set; }
         public int shiftId { get; set; }
         public int operatorId { get; set; }
         public int reasonId { get; set; }

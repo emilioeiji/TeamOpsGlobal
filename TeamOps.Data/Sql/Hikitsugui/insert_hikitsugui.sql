@@ -7,9 +7,6 @@
     EquipmentId,
     LocalId,
     SectorId,
-    ForLeaders,
-    ForOperators,
-    ForMaSv,
     Description
 )
 VALUES
@@ -21,9 +18,6 @@ VALUES
     @equipmentId,
     @localId,
     @sectorId,
-    @forLeaders,
-    @forOperators,
-    @forMaSv,
     @description
 );
 

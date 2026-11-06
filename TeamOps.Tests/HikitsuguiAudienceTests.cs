@@ -185,9 +185,8 @@ public sealed class HikitsuguiAudienceTests
         cmd.CommandText = @"
             INSERT OR IGNORE INTO Categories (Id, NamePt, NameJp) VALUES (1, 'Geral', '一般');
             INSERT INTO Hikitsugui
-                (Date, ShiftId, CreatorCodigoFJ, CategoryId, SectorId,
-                 ForLeaders, ForOperators, ForMaSv, Description)
-            SELECT CURRENT_TIMESTAMP, 1, CodigoFJ, 1, NULL, 0, 0, 0, 'Test message'
+                (Date, ShiftId, CreatorCodigoFJ, CategoryId, SectorId, Description)
+            SELECT CURRENT_TIMESTAMP, 1, CodigoFJ, 1, NULL, 'Test message'
             FROM Users WHERE Id = @userId;
             SELECT last_insert_rowid();";
         cmd.Parameters.AddWithValue("@userId", userId);
@@ -222,7 +221,7 @@ public sealed class HikitsuguiAudienceTests
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             UPDATE Hikitsugui
-            SET LocalId = @localId, ForOperators = 1
+            SET LocalId = @localId
             WHERE Id = @messageId;";
         cmd.Parameters.AddWithValue("@localId", localId);
         cmd.Parameters.AddWithValue("@messageId", messageId);

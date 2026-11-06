@@ -1,4 +1,3 @@
-let currentUserHierarchyRank = 0;
 let editExistingAttachments = [];
 let editNewAttachments = [];
 let currentEditId = null;
@@ -15,10 +14,6 @@ const I18N = {
         equipmentLabel: "Equipamento",
         localLabel: "Local",
         sectorLabel: "Setor",
-        publicAll: "Todos",
-        publicOperator: "Operador",
-        publicLeader: "Líder",
-        publicMasv: "MA/SV",
         searchPlaceholder: "Buscar texto...",
         searchButton: "Buscar",
         colRead: "Lido",
@@ -33,7 +28,6 @@ const I18N = {
         actionView: "Visualizar",
         actionEdit: "Editar",
         actionDelete: "Excluir",
-        noAccessMasv: "Seu nível de acesso não permite visualizar MA/SV.",
         errorPrefix: "Erro: ",
         invalidReply: "Digite uma resposta antes de salvar.",
         readModalTitle: "Detalhes do Hikitsugui",
@@ -83,10 +77,6 @@ const I18N = {
         equipmentLabel: "設備",
         localLabel: "場所",
         sectorLabel: "セクター",
-        publicAll: "すべて",
-        publicOperator: "オペレーター",
-        publicLeader: "リーダー",
-        publicMasv: "MA/SV",
         searchPlaceholder: "テキスト検索...",
         searchButton: "検索",
         colRead: "確認",
@@ -101,7 +91,6 @@ const I18N = {
         actionView: "表示",
         actionEdit: "編集",
         actionDelete: "削除",
-        noAccessMasv: "このアクセスレベルでは MA/SV を表示できません。",
         errorPrefix: "エラー: ",
         invalidReply: "保存する前に返信を入力してください。",
         readModalTitle: "Hikitsugui 詳細",
@@ -188,25 +177,11 @@ window.addEventListener("DOMContentLoaded", () => {
     send("load");
     initReplyEditor();
 
-    document.querySelectorAll("input[name='publico']").forEach(radio => {
-        radio.addEventListener("change", () => {
-            document.getElementById("btnBuscar").click();
-        });
-    });
-
     document.getElementById("txtSearch").addEventListener("input", () => {
         document.getElementById("btnBuscar").click();
     });
 
     document.getElementById("btnBuscar").addEventListener("click", () => {
-        const publico = document.querySelector("input[name='publico']:checked").value;
-
-        if ((publico === "lider" && currentUserHierarchyRank < 2)
-            || (publico === "masv" && currentUserHierarchyRank < 3)) {
-            alert(t("noAccessMasv"));
-            return;
-        }
-
         send("filter", currentFiltersPayload());
     });
 
@@ -272,11 +247,8 @@ window.chrome.webview.addEventListener("message", e => {
     switch (msg.type) {
         case "filters":
             currentLocale = msg.locale === "ja-JP" ? "ja-JP" : "pt-BR";
-            currentUserHierarchyRank = Number(msg.hierarchyRank || 0);
             applyLocale();
             fillFilters(msg);
-            applyAccessRules();
-            document.querySelector("input[value='todos']").checked = true;
             document.getElementById("dtInicial").value = msg.dtInicial;
             document.getElementById("dtFinal").value = msg.dtFinal;
             fillSelect("editCategoria", msg.categories, "Id", getLocaleField("NamePt", "NameJp"), false);
@@ -333,10 +305,6 @@ function applyLocale() {
     document.getElementById("txtEquipmentLabel").textContent = t("equipmentLabel");
     document.getElementById("txtLocalLabel").textContent = t("localLabel");
     document.getElementById("txtSectorLabel").textContent = t("sectorLabel");
-    document.getElementById("txtPublicAll").textContent = t("publicAll");
-    document.getElementById("txtPublicOperator").textContent = t("publicOperator");
-    document.getElementById("txtPublicLeader").textContent = t("publicLeader");
-    document.getElementById("txtPublicMasv").textContent = t("publicMasv");
     document.getElementById("txtSearch").placeholder = t("searchPlaceholder");
     document.getElementById("btnBuscar").textContent = t("searchButton");
     document.getElementById("txtColDate").textContent = t("colDate");
@@ -367,19 +335,6 @@ function applyLocale() {
     document.getElementById("txtEditAttachmentsLabel").textContent = t("editAttachmentsLabel");
     document.getElementById("btnSaveEdit").textContent = t("save");
     document.getElementById("btnCancelEdit").textContent = t("cancel");
-}
-
-function applyAccessRules() {
-    const leaderOption = document.querySelector("input[value='lider']")?.parentElement;
-    const masvOption = document.querySelector("input[value='masv']")?.parentElement;
-
-    if (currentUserHierarchyRank < 2 && leaderOption) {
-        leaderOption.style.display = "none";
-    }
-
-    if (currentUserHierarchyRank < 3 && masvOption) {
-        masvOption.style.display = "none";
-    }
 }
 
 function fillFilters(msg) {
@@ -591,7 +546,6 @@ function currentFiltersPayload(idOverride = null) {
         ...(idOverride !== null ? { id: idOverride } : {}),
         dtInicial: document.getElementById("dtInicial").value,
         dtFinal: document.getElementById("dtFinal").value,
-        publico: document.querySelector("input[name='publico']:checked").value,
         shiftId: Number(document.getElementById("shiftId").value),
         operatorId: Number(document.getElementById("operatorId").value),
         reasonId: Number(document.getElementById("reasonId").value),
@@ -602,14 +556,6 @@ function currentFiltersPayload(idOverride = null) {
 }
 
 function markRead(id) {
-    const publico = document.querySelector("input[name='publico']:checked").value;
-
-    if ((publico === "lider" && currentUserHierarchyRank < 2)
-        || (publico === "masv" && currentUserHierarchyRank < 3)) {
-        alert(t("noAccessMasv"));
-        return;
-    }
-
     send("mark_read", currentFiltersPayload(id));
 }
 
@@ -770,7 +716,6 @@ function saveEdit() {
         })),
         dtInicial: document.getElementById("dtInicial").value,
         dtFinal: document.getElementById("dtFinal").value,
-        publico: document.querySelector("input[name='publico']:checked").value,
         shiftId: Number(document.getElementById("shiftId").value),
         operatorId: Number(document.getElementById("operatorId").value),
         reasonId: Number(document.getElementById("reasonId").value),

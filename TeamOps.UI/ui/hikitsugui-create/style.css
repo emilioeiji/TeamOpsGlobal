@@ -161,8 +161,7 @@ select {
 }
 
 .grid-2col label,
-.mt-4 > label,
-.publico-title {
+.mt-4 > label {
     display: block;
     margin-bottom: 8px;
     font-size: 13px;
@@ -212,54 +211,8 @@ input[type="file"].input {
     background: var(--color-surface-muted);
 }
 
-.publico-container {
-    display: inline-flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 10px;
-    padding: 6px;
-    border: 1px solid #dbe5f0;
-    border-radius: 999px;
-    background: #eef3f9;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
-}
-
-.publico-option {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    cursor: pointer;
-}
-
-.publico-option input {
-    display: none;
-}
-
-.publico-option span {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 38px;
-    padding: 0 18px;
-    border-radius: 999px;
-    color: var(--color-text-muted);
-    font-size: 14px;
-    font-weight: 600;
-    transition:
-        background-color var(--transition-fast),
-        color var(--transition-fast),
-        box-shadow var(--transition-fast);
-}
-
-.publico-option:hover span {
-    color: var(--color-primary);
-}
-
-.publico-option input:checked + span {
-    color: var(--color-primary);
-    background: #fff;
-    box-shadow: 0 4px 12px rgba(31, 78, 163, 0.12);
+select[multiple].input {
+    min-height: 116px;
 }
 
 .editor-toolbar {
@@ -438,19 +391,6 @@ input[type="file"].input {
 }
 
 @media (max-width: 640px) {
-    .publico-container {
-        width: 100%;
-        border-radius: 18px;
-    }
-
-    .publico-option {
-        flex: 1 1 calc(50% - 8px);
-    }
-
-    .publico-option span {
-        width: 100%;
-    }
-
     .file-list li {
         flex-direction: column;
         align-items: stretch;

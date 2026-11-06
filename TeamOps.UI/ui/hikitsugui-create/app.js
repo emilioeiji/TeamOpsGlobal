@@ -15,9 +15,12 @@ const I18N = {
         localLabel: "Local",
         sectorLabel: "Setor",
         selectPlaceholder: "Selecionar...",
-        publicOperator: "Operador",
-        publicLeader: "Líder",
-        publicMasv: "MA/SV",
+        audienceTypeLabel: "Audiência",
+        audienceSectorOption: "Setor(es)",
+        audienceOrganizationOption: "Unidade organizacional",
+        audienceGeneralOption: "Toda a organização",
+        audienceSectorsLabel: "Setores destinatários",
+        audienceOrganizationLabel: "Unidade destinatária",
         descriptionLabel: "Descrição",
         listButton: "• Lista",
         clearButton: "Limpar",
@@ -30,7 +33,9 @@ const I18N = {
         validationEquipment: "Selecione um equipamento.",
         validationLocal: "Selecione um local.",
         validationSector: "Selecione um setor.",
-        validationDescription: "Informe a descrição."
+        validationDescription: "Informe a descrição.",
+        validationAudienceSectors: "Selecione ao menos um setor destinatário.",
+        validationAudienceOrganization: "Selecione uma unidade destinatária."
     },
     "ja-JP": {
         headerTitle: "Hikitsugui を登録",
@@ -42,9 +47,12 @@ const I18N = {
         localLabel: "場所",
         sectorLabel: "セクター",
         selectPlaceholder: "選択してください",
-        publicOperator: "オペレーター",
-        publicLeader: "リーダー",
-        publicMasv: "MA/SV",
+        audienceTypeLabel: "公開範囲",
+        audienceSectorOption: "セクター",
+        audienceOrganizationOption: "組織単位",
+        audienceGeneralOption: "組織全体",
+        audienceSectorsLabel: "対象セクター",
+        audienceOrganizationLabel: "対象組織単位",
         descriptionLabel: "内容",
         listButton: "• リスト",
         clearButton: "クリア",
@@ -57,7 +65,9 @@ const I18N = {
         validationEquipment: "設備を選択してください。",
         validationLocal: "場所を選択してください。",
         validationSector: "セクターを選択してください。",
-        validationDescription: "内容を入力してください。"
+        validationDescription: "内容を入力してください。",
+        validationAudienceSectors: "対象セクターを1つ以上選択してください。",
+        validationAudienceOrganization: "対象組織単位を選択してください。"
     }
 };
 
@@ -88,6 +98,8 @@ window.addEventListener("DOMContentLoaded", () => {
     document.getElementById("btnSalvar").addEventListener("click", salvar);
     document.getElementById("btnCancelar").addEventListener("click", () => send("cancel"));
     document.getElementById("fileUpload").addEventListener("change", handleFiles);
+    document.getElementById("audienceType").addEventListener("change", updateAudienceFields);
+    document.getElementById("sectorId").addEventListener("change", selectOperationalSectorAsAudience);
 
     initEditorToolbar();
 });
@@ -103,6 +115,10 @@ window.chrome.webview.addEventListener("message", e => {
         case "saved":
             alert(t("savedMessage"));
             send("cancel");
+            break;
+
+        case "error":
+            alert(msg.message || "Erro");
             break;
     }
 });
@@ -128,6 +144,12 @@ function preencherFiltros(data) {
     fillSelect("equipId", data.equipments, "Id", getLocalizedField(), true);
     fillSelect("localId", data.locals, "Id", getLocalizedField(), true);
     fillSelect("sectorId", data.sectors, "Id", getLocalizedField(), true);
+    fillSelect("audienceSectorIds", data.sectors, "Id", getLocalizedField());
+    fillSelect("audienceOrganizationNodeId", data.organizationNodes, "Id", getLocalizedField(), true);
+
+    const generalOption = document.getElementById("txtAudienceGeneralOption");
+    generalOption.disabled = !data.canTargetGeneral;
+    updateAudienceFields();
 }
 
 function applyLocale() {
@@ -142,9 +164,12 @@ function applyLocale() {
     document.getElementById("txtEquipmentLabel").textContent = t("equipmentLabel");
     document.getElementById("txtLocalLabel").textContent = t("localLabel");
     document.getElementById("txtSectorLabel").textContent = t("sectorLabel");
-    document.getElementById("txtPublicOperator").textContent = t("publicOperator");
-    document.getElementById("txtPublicLeader").textContent = t("publicLeader");
-    document.getElementById("txtPublicMasv").textContent = t("publicMasv");
+    document.getElementById("txtAudienceTypeLabel").textContent = t("audienceTypeLabel");
+    document.getElementById("txtAudienceSectorOption").textContent = t("audienceSectorOption");
+    document.getElementById("txtAudienceOrganizationOption").textContent = t("audienceOrganizationOption");
+    document.getElementById("txtAudienceGeneralOption").textContent = t("audienceGeneralOption");
+    document.getElementById("txtAudienceSectorsLabel").textContent = t("audienceSectorsLabel");
+    document.getElementById("txtAudienceOrganizationLabel").textContent = t("audienceOrganizationLabel");
     document.getElementById("txtDescriptionLabel").textContent = t("descriptionLabel");
     document.getElementById("btnBulletList").textContent = t("listButton");
     document.getElementById("btnClearFormat").textContent = t("clearButton");
@@ -164,6 +189,21 @@ function fillSelect(id, list, valueField, textField, allowZero = false) {
     list.forEach(item => {
         sel.innerHTML += `<option value="${item[valueField]}">${escapeHtml(item[textField])}</option>`;
     });
+}
+
+function updateAudienceFields() {
+    const type = document.getElementById("audienceType").value;
+    document.getElementById("audienceSectorsField").hidden = type !== "sector";
+    document.getElementById("audienceOrganizationField").hidden = type !== "organization";
+}
+
+function selectOperationalSectorAsAudience() {
+    const sectorId = document.getElementById("sectorId").value;
+    const audienceSelect = document.getElementById("audienceSectorIds");
+    if (!sectorId || sectorId === "0" || Array.from(audienceSelect.selectedOptions).length > 0) return;
+
+    const option = Array.from(audienceSelect.options).find(item => item.value === sectorId);
+    if (option) option.selected = true;
 }
 
 let attachments = [];
@@ -264,6 +304,19 @@ function validar() {
         return false;
     }
 
+    const audienceType = document.getElementById("audienceType").value;
+    if (audienceType === "sector"
+        && document.getElementById("audienceSectorIds").selectedOptions.length === 0) {
+        alert(t("validationAudienceSectors"));
+        return false;
+    }
+
+    if (audienceType === "organization"
+        && Number(document.getElementById("audienceOrganizationNodeId").value) === 0) {
+        alert(t("validationAudienceOrganization"));
+        return false;
+    }
+
     const editor = document.getElementById("txtDescricao");
     const plain = editor.innerText.trim();
     if (!plain) {
@@ -277,8 +330,6 @@ function validar() {
 function salvar() {
     if (!validar()) return;
 
-    const publico = document.querySelector("input[name='publico']:checked").value;
-
     const payload = {
         action: "save",
         date: getFullDateTime(),
@@ -287,7 +338,10 @@ function salvar() {
         equipId: Number(document.getElementById("equipId").value),
         localId: Number(document.getElementById("localId").value),
         sectorId: Number(document.getElementById("sectorId").value),
-        publico,
+        audienceType: document.getElementById("audienceType").value,
+        sectorIds: Array.from(document.getElementById("audienceSectorIds").selectedOptions)
+            .map(option => Number(option.value)),
+        organizationNodeId: Number(document.getElementById("audienceOrganizationNodeId").value || 0),
         text: document.getElementById("txtDescricao").innerHTML,
         attachments
     };

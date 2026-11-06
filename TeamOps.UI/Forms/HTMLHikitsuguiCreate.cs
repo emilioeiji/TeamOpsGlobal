@@ -61,20 +61,28 @@ namespace TeamOps.UI.Forms
             var msg = JsonSerializer.Deserialize<JsRequest>(e.WebMessageAsJson);
             if (msg == null) return;
 
-            switch (msg.action)
+            try
             {
-                case "load":
-                    LoadInitialData();
-                    break;
+                switch (msg.action)
+                {
+                    case "load":
+                        LoadInitialData();
+                        break;
 
-                case "save":
-                    Console.WriteLine("QTD ANEXOS RECEBIDOS: " + (msg.attachments?.Count ?? 0));
-                    SaveHikitsugui(msg);
-                    break;
+                    case "save":
+                        Console.WriteLine("QTD ANEXOS RECEBIDOS: " + (msg.attachments?.Count ?? 0));
+                        SaveHikitsugui(msg);
+                        break;
 
-                case "cancel":
-                    Close();
-                    break;
+                    case "cancel":
+                        Close();
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                webViewCreate.CoreWebView2.PostWebMessageAsJson(
+                    JsonSerializer.Serialize(new { type = "error", message = ex.Message }));
             }
         }
 
@@ -132,6 +140,38 @@ namespace TeamOps.UI.Forms
                   ORDER BY NamePt;"
             ).Where(item => authorizedSectorIds.Contains((int)item.Id));
 
+            var organizationNodes = conn.Query(
+                @"SELECT
+                      Id,
+                      Code,
+                      COALESCE(NamePt, Code) AS NamePt,
+                      COALESCE(NULLIF(NameJp, ''), NamePt, Code) AS NameJp
+                  FROM OrganizationNodes
+                  WHERE NodeType = 'Unit' AND IsActive = 1
+                  ORDER BY Code;"
+            ).Where(item =>
+            {
+                var descendantSectorIds = conn.Query<int>(
+                    @"WITH RECURSIVE descendants(Id) AS (
+                          SELECT Id FROM OrganizationNodes WHERE Id = @nodeId AND IsActive = 1
+                          UNION ALL
+                          SELECT child.Id FROM OrganizationNodes child
+                          JOIN descendants parent ON child.ParentId = parent.Id
+                          WHERE child.IsActive = 1
+                      )
+                      SELECT sector.Id FROM Sectors sector
+                      JOIN descendants ON descendants.Id = sector.OrganizationNodeId
+                      WHERE sector.IsActive = 1;",
+                    new { nodeId = (int)item.Id }).ToArray();
+
+                return descendantSectorIds.Length > 0
+                    && descendantSectorIds.All(authorizedSectorIds.Contains);
+            }).ToArray();
+
+            var activeSectorIds = conn.Query<int>("SELECT Id FROM Sectors WHERE IsActive = 1;").ToArray();
+            var canTargetGeneral = activeSectorIds.Length > 0
+                && activeSectorIds.All(authorizedSectorIds.Contains);
+
             var json = JsonSerializer.Serialize(new
             {
                 type = "filters",
@@ -141,6 +181,8 @@ namespace TeamOps.UI.Forms
                 equipments,
                 locals,
                 sectors,
+                organizationNodes,
+                canTargetGeneral,
                 shiftId = _currentOperator.ShiftId,
                 creatorCodigoFJ = _currentOperator.CodigoFJ,
                 creatorNamePt = _currentOperator.NameRomanji,
@@ -174,15 +216,34 @@ namespace TeamOps.UI.Forms
                 equipmentId = msg.equipId == 0 ? (int?)null : msg.equipId,
                 localId = msg.localId == 0 ? (int?)null : msg.localId,
                 sectorId = msg.sectorId == 0 ? (int?)null : msg.sectorId,
-                forLeaders = msg.publico == "lider" ? 1 : 0,
-                forOperators = msg.publico == "operador" ? 1 : 0,
-                forMaSv = msg.publico == "masv" ? 1 : 0,
                 description = msg.text
             });
 
             try
             {
-                _audienceService.SetSectorAudience(_currentUser.Id, newId, [msg.sectorId]);
+                switch ((msg.audienceType ?? string.Empty).Trim().ToLowerInvariant())
+                {
+                    case "organization":
+                        if (msg.organizationNodeId <= 0)
+                            throw new InvalidOperationException("Selecione uma unidade organizacional.");
+                        _audienceService.SetOrganizationAudience(_currentUser.Id, newId, msg.organizationNodeId);
+                        break;
+
+                    case "general":
+                        _audienceService.SetGeneralAudience(_currentUser.Id, newId);
+                        break;
+
+                    case "sector":
+                    case "":
+                        var targetSectorIds = msg.sectorIds?.Count > 0
+                            ? msg.sectorIds
+                            : [msg.sectorId];
+                        _audienceService.SetSectorAudience(_currentUser.Id, newId, targetSectorIds);
+                        break;
+
+                    default:
+                        throw new InvalidOperationException("Tipo de audiencia invalido.");
+                }
             }
             catch
             {

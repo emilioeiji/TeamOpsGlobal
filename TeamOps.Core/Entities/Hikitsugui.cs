@@ -15,10 +15,7 @@ namespace TeamOps.Core.Entities
         public string LocalName { get; set; } = "";
         public int? SectorId { get; set; }
         public string? SectorName { get; set; }
-        public bool ForLeaders { get; set; }
-        public bool ForOperators { get; set; }
         public string Description { get; set; } = "";
         public string? AttachmentPath { get; set; }
-        public bool ForMaSv { get; set; }
     }
 }

@@ -266,8 +266,8 @@ namespace TeamOps.Data.Db
                     CREATE INDEX IF NOT EXISTS IX_Operators_Status_Shift_Sector_Name
                     ON Operators(Status, ShiftId, SectorId, NameRomanji);
 
-                    CREATE INDEX IF NOT EXISTS IX_Hikitsugui_OperatorRead
-                    ON Hikitsugui(ForOperators, LocalId, Date);
+                    CREATE INDEX IF NOT EXISTS IX_Hikitsugui_Local_Date
+                    ON Hikitsugui(LocalId, Date);
 
                     CREATE INDEX IF NOT EXISTS IX_HikitsuguiReads_Reader_Hikitsugui
                     ON HikitsuguiReads(ReaderCodigoFJ, HikitsuguiId);

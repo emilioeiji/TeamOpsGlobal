@@ -1,6 +1,3 @@
-﻿using Microsoft.Data.Sqlite;
-using System;
-using System.Collections.Generic;
 using TeamOps.Core.Entities;
 using TeamOps.Data.Db;
 using TeamOps.Data.Security;
@@ -16,176 +13,71 @@ namespace TeamOps.Data.Repositories
             _factory = factory;
         }
 
-        // ---------------------------------------------------------
-        // INSERT
-        // ---------------------------------------------------------
-        public int Add(Hikitsugui h)
+        public int Add(Hikitsugui value)
         {
             using var conn = _factory.CreateOpenConnection();
             using var cmd = conn.CreateCommand();
-
             cmd.CommandText = @"
-        INSERT INTO Hikitsugui
-        (Date, ShiftId, CreatorCodigoFJ, CategoryId, EquipmentId, LocalId, SectorId, ForLeaders, ForOperators, Description, AttachmentPath, ForMaSv)
-        VALUES
-        (@Date, @ShiftId, @CreatorCodigoFJ, @CategoryId, @EquipmentId, @LocalId, @SectorId, @ForLeaders, @ForOperators, @Description, @AttachmentPath, @ForMaSv);
-
-        SELECT last_insert_rowid();
-        ";
-
-            cmd.Parameters.AddWithValue("@Date", h.Date);
-            cmd.Parameters.AddWithValue("@ShiftId", h.ShiftId);
-            cmd.Parameters.AddWithValue("@CreatorCodigoFJ", h.CreatorCodigoFJ);
-            cmd.Parameters.AddWithValue("@CategoryId", h.CategoryId);
-            cmd.Parameters.AddWithValue("@EquipmentId", (object?)h.EquipmentId ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@LocalId", (object?)h.LocalId ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@SectorId", (object?)h.SectorId ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@ForLeaders", h.ForLeaders ? 1 : 0);
-            cmd.Parameters.AddWithValue("@ForOperators", h.ForOperators ? 1 : 0);
-            cmd.Parameters.AddWithValue("@Description", h.Description ?? "");
-            cmd.Parameters.AddWithValue("@AttachmentPath", (object?)h.AttachmentPath ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@ForMaSv", h.ForMaSv ? 1 : 0);
-
-            object? result = cmd.ExecuteScalar();
-
-            return Convert.ToInt32(result);
+                INSERT INTO Hikitsugui
+                    (Date, ShiftId, CreatorCodigoFJ, CategoryId, EquipmentId,
+                     LocalId, SectorId, Description, AttachmentPath)
+                VALUES
+                    (@date, @shiftId, @creatorCodigoFJ, @categoryId, @equipmentId,
+                     @localId, @sectorId, @description, @attachmentPath);
+                SELECT last_insert_rowid();";
+            cmd.Parameters.AddWithValue("@date", value.Date);
+            cmd.Parameters.AddWithValue("@shiftId", value.ShiftId);
+            cmd.Parameters.AddWithValue("@creatorCodigoFJ", value.CreatorCodigoFJ);
+            cmd.Parameters.AddWithValue("@categoryId", value.CategoryId);
+            cmd.Parameters.AddWithValue("@equipmentId", (object?)value.EquipmentId ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@localId", (object?)value.LocalId ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@sectorId", (object?)value.SectorId ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@description", value.Description ?? string.Empty);
+            cmd.Parameters.AddWithValue("@attachmentPath", (object?)value.AttachmentPath ?? DBNull.Value);
+            return checked((int)(long)cmd.ExecuteScalar()!);
         }
 
-
-        // ---------------------------------------------------------
-        // UPDATE AttachmentPath
-        // ---------------------------------------------------------
         public void UpdateAttachmentPath(int id, string path)
         {
             using var conn = _factory.CreateOpenConnection();
             using var cmd = conn.CreateCommand();
-
-            cmd.CommandText = @"
-                UPDATE Hikitsugui
-                SET AttachmentPath = @path
-                WHERE Id = @id";
-
+            cmd.CommandText = "UPDATE Hikitsugui SET AttachmentPath = @path WHERE Id = @id;";
             cmd.Parameters.AddWithValue("@path", path);
             cmd.Parameters.AddWithValue("@id", id);
-
             cmd.ExecuteNonQuery();
         }
 
-        // ---------------------------------------------------------
-        // GET BY ID
-        // ---------------------------------------------------------
         public Hikitsugui? GetById(int id)
         {
             using var conn = _factory.CreateOpenConnection();
             using var cmd = conn.CreateCommand();
-
             cmd.CommandText = @"
                 SELECT Id, Date, ShiftId, CreatorCodigoFJ, CategoryId,
-                       EquipmentId, LocalId, SectorId, ForLeaders, ForOperators,
-                       Description, AttachmentPath
+                       EquipmentId, LocalId, SectorId, Description, AttachmentPath
                 FROM Hikitsugui
-                WHERE Id = @id";
-
+                WHERE Id = @id;";
             cmd.Parameters.AddWithValue("@id", id);
-
             using var reader = cmd.ExecuteReader();
-            if (!reader.Read())
-                return null;
-
-            return new Hikitsugui
-            {
-                Id = reader.GetInt32(0),
-                Date = reader.GetDateTime(1),
-                ShiftId = reader.GetInt32(2),
-                CreatorCodigoFJ = reader.GetString(3),
-                CategoryId = reader.GetInt32(4),
-                EquipmentId = reader.IsDBNull(5) ? null : reader.GetInt32(5),
-                LocalId = reader.IsDBNull(6) ? null : reader.GetInt32(6),
-                SectorId = reader.IsDBNull(7) ? null : reader.GetInt32(7),
-                ForLeaders = reader.GetInt32(8) == 1,
-                ForOperators = reader.GetInt32(9) == 1,
-                Description = reader.GetString(10),
-                AttachmentPath = reader.IsDBNull(11) ? null : reader.GetString(11)
-            };
+            return reader.Read() ? Map(reader) : null;
         }
 
-        // ---------------------------------------------------------
-        // GET ALL
-        // ---------------------------------------------------------
         public List<Hikitsugui> GetAll()
         {
-            var list = new List<Hikitsugui>();
-
+            var result = new List<Hikitsugui>();
             using var conn = _factory.CreateOpenConnection();
             using var cmd = conn.CreateCommand();
-
             cmd.CommandText = @"
                 SELECT Id, Date, ShiftId, CreatorCodigoFJ, CategoryId,
-                       EquipmentId, LocalId, ForLeaders, ForOperators,
-                       Description, AttachmentPath
+                       EquipmentId, LocalId, SectorId, Description, AttachmentPath
                 FROM Hikitsugui
-                ORDER BY Date DESC";
-
+                ORDER BY Date DESC;";
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
-            {
-                list.Add(new Hikitsugui
-                {
-                    Id = reader.GetInt32(0),
-                    Date = reader.GetDateTime(1),
-                    ShiftId = reader.GetInt32(2),
-                    CreatorCodigoFJ = reader.GetString(3),
-                    CategoryId = reader.GetInt32(4),
-                    EquipmentId = reader.IsDBNull(5) ? null : reader.GetInt32(5),
-                    LocalId = reader.IsDBNull(6) ? null : reader.GetInt32(6),
-                    ForLeaders = reader.GetInt32(7) == 1,
-                    ForOperators = reader.GetInt32(8) == 1,
-                    Description = reader.GetString(9),
-                    AttachmentPath = reader.IsDBNull(10) ? null : reader.GetString(10)
-                });
-            }
-
-            return list;
+                result.Add(Map(reader));
+            return result;
         }
 
-        public List<Hikitsugui> GetAllWithSector()
-        {
-            var list = new List<Hikitsugui>();
-
-            using var conn = _factory.CreateOpenConnection();
-            using var cmd = conn.CreateCommand();
-
-            cmd.CommandText = @"
-                SELECT Id, Date, ShiftId, CreatorCodigoFJ, CategoryId,
-                       EquipmentId, LocalId, SectorId, ForLeaders, ForOperators,
-                       Description, AttachmentPath,
-                       ForMaSv
-                FROM Hikitsugui
-                ORDER BY Date DESC";
-
-            using var reader = cmd.ExecuteReader();
-            while (reader.Read())
-            {
-                list.Add(new Hikitsugui
-                {
-                    Id = reader.GetInt32(0),
-                    Date = reader.GetDateTime(1),
-                    ShiftId = reader.GetInt32(2),
-                    CreatorCodigoFJ = reader.GetString(3),
-                    CategoryId = reader.GetInt32(4),
-                    EquipmentId = reader.IsDBNull(5) ? null : reader.GetInt32(5),
-                    LocalId = reader.IsDBNull(6) ? null : reader.GetInt32(6),
-                    SectorId = reader.IsDBNull(7) ? null : reader.GetInt32(7),
-                    ForLeaders = reader.GetInt32(8) == 1,
-                    ForOperators = reader.GetInt32(9) == 1,
-                    Description = reader.GetString(10),
-                    AttachmentPath = reader.IsDBNull(11) ? null : reader.GetString(11),
-                    ForMaSv = reader.GetInt32(12) == 1
-                });
-            }
-
-            return list;
-        }
+        public List<Hikitsugui> GetAllWithSector() => GetAll();
 
         public List<HikitsuguiListItem> GetForOperator(
             DateTime start,
@@ -193,67 +85,65 @@ namespace TeamOps.Data.Repositories
             int userId,
             int selectedLocalId)
         {
-            var list = new List<HikitsuguiListItem>();
             var visibleIds = new HikitsuguiAudienceService(_factory)
                 .GetVisibleMessageIds(userId, start, end);
-
             if (visibleIds.Count == 0)
-                return list;
+                return [];
 
+            var result = new List<HikitsuguiListItem>();
             using var conn = _factory.CreateOpenConnection();
             using var cmd = conn.CreateCommand();
-
             cmd.CommandText = @"
-        SELECT 
-            h.Id,
-            h.Date,
-            c.NamePt,
-            o.NameRomanji AS CreatorCodigoFJ,
-            h.Description
-        FROM Hikitsugui h
-        INNER JOIN Categories c ON c.Id = h.CategoryId
-        LEFT JOIN Operators o ON o.CodigoFJ = h.CreatorCodigoFJ
-        WHERE h.Date >= @Start AND h.Date < @End
-          AND h.ForOperators = 1
-          AND (h.LocalId = @LocalId OR h.LocalId IS NULL)
-        ORDER BY h.Date DESC";
-
-            cmd.Parameters.AddWithValue("@LocalId", selectedLocalId);
-            cmd.Parameters.AddWithValue("@Start", start);
-            cmd.Parameters.AddWithValue("@End", end);
-
+                SELECT h.Id, h.Date, c.NamePt,
+                       COALESCE(o.NameRomanji, h.CreatorCodigoFJ), h.Description
+                FROM Hikitsugui h
+                INNER JOIN Categories c ON c.Id = h.CategoryId
+                LEFT JOIN Operators o ON o.CodigoFJ = h.CreatorCodigoFJ
+                WHERE h.Date >= @start AND h.Date < @end
+                  AND (h.LocalId = @localId OR h.LocalId IS NULL)
+                ORDER BY h.Date DESC;";
+            cmd.Parameters.AddWithValue("@localId", selectedLocalId);
+            cmd.Parameters.AddWithValue("@start", start);
+            cmd.Parameters.AddWithValue("@end", end);
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
             {
-                var id = reader.GetInt32(0);
-                if (!visibleIds.Contains(id))
+                var messageId = reader.GetInt32(0);
+                if (!visibleIds.Contains(messageId))
                     continue;
-
-                list.Add(new HikitsuguiListItem
+                result.Add(new HikitsuguiListItem
                 {
-                    Id = id,
+                    Id = messageId,
                     Date = reader.GetDateTime(1),
                     CategoryName = reader.GetString(2),
                     CreatorCodigoFJ = reader.GetString(3),
                     Description = reader.GetString(4)
                 });
             }
-
-            return list;
+            return result;
         }
 
-        // ---------------------------------------------------------
-        // DELETE
-        // ---------------------------------------------------------
         public void Delete(int id)
         {
             using var conn = _factory.CreateOpenConnection();
             using var cmd = conn.CreateCommand();
-
-            cmd.CommandText = "DELETE FROM Hikitsugui WHERE Id = @id";
+            cmd.CommandText = "DELETE FROM Hikitsugui WHERE Id = @id;";
             cmd.Parameters.AddWithValue("@id", id);
-
             cmd.ExecuteNonQuery();
         }
+
+        private static Hikitsugui Map(Microsoft.Data.Sqlite.SqliteDataReader reader) => new()
+        {
+            Id = reader.GetInt32(0),
+            Date = reader.GetDateTime(1),
+            ShiftId = reader.GetInt32(2),
+            CreatorCodigoFJ = reader.GetString(3),
+            CategoryId = reader.GetInt32(4),
+            EquipmentId = reader.IsDBNull(5) ? null : reader.GetInt32(5),
+            LocalId = reader.IsDBNull(6) ? null : reader.GetInt32(6),
+            SectorId = reader.IsDBNull(7) ? null : reader.GetInt32(7),
+            Description = reader.GetString(8),
+            AttachmentPath = reader.IsDBNull(9) ? null : reader.GetString(9)
+        };
     }
 }

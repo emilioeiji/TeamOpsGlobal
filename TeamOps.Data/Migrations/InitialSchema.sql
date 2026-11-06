@@ -138,12 +138,9 @@ CREATE TABLE IF NOT EXISTS Hikitsugui (
     CategoryId      INTEGER  NOT NULL,
     EquipmentId     INTEGER,
     LocalId         INTEGER,
-    SectorId        INTEGER,   -- NOVO
-    ForLeaders      INTEGER  NOT NULL,
-    ForOperators    INTEGER  NOT NULL,
+    SectorId        INTEGER,
     Description     TEXT     NOT NULL,
     AttachmentPath  TEXT,
-    ForMaSv         INTEGER  NOT NULL DEFAULT 0,
     FOREIGN KEY (ShiftId)         REFERENCES Shifts (Id),
     FOREIGN KEY (CreatorCodigoFJ) REFERENCES Operators (CodigoFJ),
     FOREIGN KEY (CategoryId)      REFERENCES Categories (Id),
@@ -151,7 +148,6 @@ CREATE TABLE IF NOT EXISTS Hikitsugui (
     FOREIGN KEY (LocalId)         REFERENCES Locals (Id),
     FOREIGN KEY (SectorId)        REFERENCES Sectors (Id)
 );
--- ALTER TABLE Hikitsugui ADD COLUMN ForMaSv INTEGER NOT NULL DEFAULT 0;
 
 CREATE TABLE IF NOT EXISTS HikitsuguiResponses (
     Id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -191,8 +187,8 @@ CREATE TABLE IF NOT EXISTS HikitsuguiAttachments (
     FOREIGN KEY (HikitsuguiId) REFERENCES Hikitsugui(Id)
 );
 
-CREATE INDEX IF NOT EXISTS IX_Hikitsugui_OperatorRead
-ON Hikitsugui(ForOperators, LocalId, Date);
+CREATE INDEX IF NOT EXISTS IX_Hikitsugui_Local_Date
+ON Hikitsugui(LocalId, Date);
 
 CREATE INDEX IF NOT EXISTS IX_HikitsuguiReads_Reader_Hikitsugui
 ON HikitsuguiReads(ReaderCodigoFJ, HikitsuguiId);
