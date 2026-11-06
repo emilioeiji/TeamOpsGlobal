@@ -35,7 +35,6 @@ namespace TeamOps.UI.Services
         public OperatorManagerInitPayload GetInitialPayload(int defaultShiftId, int defaultSectorId)
         {
             using var conn = _factory.CreateOpenConnection();
-            MasterCardModuleService.EnsureSchema(conn);
 
             var shifts = conn.Query<OperatorManagerLookupItem>(
                 @"
@@ -78,7 +77,6 @@ namespace TeamOps.UI.Services
         public OperatorManagerDirectoryPayload GetDirectory(OperatorManagerDirectoryFilter filter)
         {
             using var conn = _factory.CreateOpenConnection();
-            MasterCardModuleService.EnsureSchema(conn);
 
             var startDate = DateTime.Today.AddDays(-(Math.Max(1, filter.PeriodDays) - 1));
             var endDate = DateTime.Today;
@@ -846,7 +844,6 @@ namespace TeamOps.UI.Services
             }
 
             using var conn = _factory.CreateOpenConnection();
-            MasterCardModuleService.EnsureSchema(conn);
 
             var operatorInfo = conn.QuerySingleOrDefault<OperatorManagerOperatorInfo>(
                 @"

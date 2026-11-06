@@ -20,6 +20,7 @@
     <EmbeddedResource Include="Migrations\V2_0004_HikitsuguiAudiences.sql" />
     <EmbeddedResource Include="Migrations\V2_0005_TasksSectorScope.sql" />
     <EmbeddedResource Include="Migrations\V2_0006_PaidLeavePermission.sql" />
+    <EmbeddedResource Include="Migrations\V2_0007_FeatureModules.sql" />
   </ItemGroup>
 
   <ItemGroup>

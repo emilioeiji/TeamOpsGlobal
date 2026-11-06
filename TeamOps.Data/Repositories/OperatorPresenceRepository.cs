@@ -1,6 +1,5 @@
 ﻿using System.Collections.Generic;
 using System;
-using Microsoft.Data.Sqlite;
 using TeamOps.Core.Entities;
 using TeamOps.Data.Db;
 
@@ -8,9 +7,6 @@ namespace TeamOps.Data.Repositories
 {
     public sealed class OperatorPresenceRepository
     {
-        private static readonly object SchemaLock = new();
-        private static bool _indexesEnsured;
-
         private readonly SqliteConnectionFactory _factory;
 
         public OperatorPresenceRepository(SqliteConnectionFactory factory)
@@ -21,7 +17,6 @@ namespace TeamOps.Data.Repositories
         public void RegisterPresence(string codigoFJ, int sectorId, int localId, int shiftId, DateTime date)
         {
             using var conn = _factory.CreateOpenConnection();
-            EnsureIndexes(conn);
             using var cmd = conn.CreateCommand();
 
             cmd.CommandText = @"
@@ -44,7 +39,6 @@ namespace TeamOps.Data.Repositories
             var list = new List<OperatorPresence>();
 
             using var conn = _factory.CreateOpenConnection();
-            EnsureIndexes(conn);
             using var cmd = conn.CreateCommand();
 
             cmd.CommandText = @"
@@ -105,7 +99,6 @@ namespace TeamOps.Data.Repositories
             var list = new List<OperatorPresence>();
 
             using var conn = _factory.CreateOpenConnection();
-            EnsureIndexes(conn);
             using var cmd = conn.CreateCommand();
 
             cmd.CommandText = @"
@@ -164,7 +157,6 @@ namespace TeamOps.Data.Repositories
             var list = new List<OperatorPresence>();
 
             using var conn = _factory.CreateOpenConnection();
-            EnsureIndexes(conn);
             using var cmd = conn.CreateCommand();
 
             cmd.CommandText = @"
@@ -208,31 +200,5 @@ namespace TeamOps.Data.Repositories
             return list;
         }
 
-        private static void EnsureIndexes(SqliteConnection conn)
-        {
-            if (_indexesEnsured)
-            {
-                return;
-            }
-
-            lock (SchemaLock)
-            {
-                if (_indexesEnsured)
-                {
-                    return;
-                }
-
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = @"
-                    CREATE INDEX IF NOT EXISTS IX_OperatorPresence_DaySectorShiftOperator
-                    ON OperatorPresence(date(Date), SectorId, ShiftId, CodigoFJ, Date);
-
-                    CREATE INDEX IF NOT EXISTS IX_OperatorPresence_OperatorDay
-                    ON OperatorPresence(CodigoFJ, date(Date), Date);";
-                cmd.ExecuteNonQuery();
-
-                _indexesEnsured = true;
-            }
-        }
     }
 }

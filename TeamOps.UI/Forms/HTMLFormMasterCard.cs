@@ -87,7 +87,6 @@ namespace TeamOps.UI.Forms
             _authorization.Demand(_currentUser.Id, ModuleCodes.MasterCard, PermissionActions.View);
             var authorizedSectorIds = _authorization.GetContext(_currentUser.Id).AuthorizedSectorIds;
             using var conn = _factory.CreateOpenConnection();
-            MasterCardModuleService.EnsureSchema(conn);
 
             PostJson(new
             {
@@ -112,7 +111,6 @@ namespace TeamOps.UI.Forms
             try
             {
                 using var conn = _factory.CreateOpenConnection();
-                MasterCardModuleService.EnsureSchema(conn);
 
                 var current = MasterCardModuleService.GetMasterCard(conn, id)
                     ?? throw new InvalidOperationException(L("MasterCard nao encontrado.", "MasterCard が見つかりません。"));
@@ -136,7 +134,6 @@ namespace TeamOps.UI.Forms
             try
             {
                 using var conn = _factory.CreateOpenConnection();
-                MasterCardModuleService.EnsureSchema(conn);
 
                 var input = BuildInput(msg);
                 _authorization.Demand(_currentUser.Id, ModuleCodes.MasterCard, PermissionActions.Create, input.SectorId);
@@ -164,7 +161,6 @@ namespace TeamOps.UI.Forms
             try
             {
                 using var conn = _factory.CreateOpenConnection();
-                MasterCardModuleService.EnsureSchema(conn);
 
                 var input = BuildInput(msg);
                 var current = MasterCardModuleService.GetMasterCard(conn, msg.id)
@@ -195,7 +191,6 @@ namespace TeamOps.UI.Forms
             try
             {
                 using var conn = _factory.CreateOpenConnection();
-                MasterCardModuleService.EnsureSchema(conn);
 
                 var current = MasterCardModuleService.GetMasterCard(conn, msg.id)
                     ?? throw new InvalidOperationException(L("MasterCard nao encontrado.", "MasterCard が見つかりません。"));

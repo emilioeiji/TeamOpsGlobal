@@ -103,7 +103,6 @@ namespace TeamOps.UI.Forms
             _authorization.Demand(_currentUser.Id, ModuleCodes.Tasks, PermissionActions.View);
             var context = _authorization.GetContext(_currentUser.Id);
             using var conn = _factory.CreateOpenConnection();
-            EnsureSchema(conn);
 
             PostJson(new
             {
@@ -139,7 +138,6 @@ namespace TeamOps.UI.Forms
             try
             {
                 using var conn = _factory.CreateOpenConnection();
-                EnsureSchema(conn);
 
                 var current = GetTaskState(conn, taskId);
                 if (current == null)
@@ -168,7 +166,6 @@ namespace TeamOps.UI.Forms
             try
             {
                 using var conn = _factory.CreateOpenConnection();
-                EnsureSchema(conn);
 
                 var description = NormalizeDescription(msg.description);
                 var dueDate = ParseDueDate(msg.dueDate);
@@ -268,7 +265,6 @@ namespace TeamOps.UI.Forms
             try
             {
                 using var conn = _factory.CreateOpenConnection();
-                EnsureSchema(conn);
 
                 var current = GetTaskState(conn, msg.id)
                     ?? throw new InvalidOperationException(L("Task nao encontrada para edicao.", "編集対象の Task が見つかりません。"));
@@ -358,7 +354,6 @@ namespace TeamOps.UI.Forms
             try
             {
                 using var conn = _factory.CreateOpenConnection();
-                EnsureSchema(conn);
 
                 var current = GetTaskState(conn, msg.id)
                     ?? throw new InvalidOperationException(L("Task nao encontrada para atualizar status.", "ステータス更新対象の Task が見つかりません。"));
@@ -797,56 +792,6 @@ namespace TeamOps.UI.Forms
                 changedAt = row.changedAt,
                 note = row.note
             });
-        }
-
-        private static void EnsureSchema(System.Data.IDbConnection conn)
-        {
-            conn.Execute(
-                @"
-                    CREATE TABLE IF NOT EXISTS Tasks (
-                        Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        Description TEXT NOT NULL,
-                        DueDate DATE NOT NULL,
-                        ShiftId INTEGER NOT NULL,
-                        SectorId INTEGER NOT NULL,
-                        AssigneeCodigoFJ TEXT,
-                        Status TEXT NOT NULL,
-                        CreatedByCodigoFJ TEXT NOT NULL,
-                        CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                        UpdatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                        StartedAt DATETIME,
-                        CompletedAt DATETIME,
-                        CancelledAt DATETIME,
-                        FOREIGN KEY (ShiftId) REFERENCES Shifts(Id),
-                        FOREIGN KEY (SectorId) REFERENCES Sectors(Id),
-                        FOREIGN KEY (AssigneeCodigoFJ) REFERENCES Operators(CodigoFJ),
-                        FOREIGN KEY (CreatedByCodigoFJ) REFERENCES Operators(CodigoFJ)
-                    );
-
-                    CREATE TABLE IF NOT EXISTS TaskStatusHistory (
-                        Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        TaskId INTEGER NOT NULL,
-                        PreviousStatus TEXT,
-                        NewStatus TEXT NOT NULL,
-                        ChangedByCodigoFJ TEXT NOT NULL,
-                        ChangedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                        Note TEXT,
-                        FOREIGN KEY (TaskId) REFERENCES Tasks(Id),
-                        FOREIGN KEY (ChangedByCodigoFJ) REFERENCES Operators(CodigoFJ)
-                    );
-
-                    CREATE INDEX IF NOT EXISTS IX_Tasks_Status_DueDate
-                    ON Tasks(Status, DueDate);
-
-                    CREATE INDEX IF NOT EXISTS IX_Tasks_Shift_Assignee
-                    ON Tasks(ShiftId, AssigneeCodigoFJ);
-
-                    CREATE INDEX IF NOT EXISTS IX_Tasks_Sector_Status_DueDate
-                    ON Tasks(SectorId, Status, DueDate);
-
-                    CREATE INDEX IF NOT EXISTS IX_TaskStatusHistory_TaskId
-                    ON TaskStatusHistory(TaskId, ChangedAt);"
-            );
         }
 
         private void PostJson(object payload)

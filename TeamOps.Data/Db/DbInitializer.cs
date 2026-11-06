@@ -84,7 +84,8 @@ namespace TeamOps.Data.Db
             new(3, "Identity and authorization", "TeamOps.Data.Migrations.V2_0003_IdentityAuthorization.sql"),
             new(4, "Hikitsugui audiences", "TeamOps.Data.Migrations.V2_0004_HikitsuguiAudiences.sql"),
             new(5, "Tasks sector scope", "TeamOps.Data.Migrations.V2_0005_TasksSectorScope.sql"),
-            new(6, "Paid leave permission", "TeamOps.Data.Migrations.V2_0006_PaidLeavePermission.sql")
+            new(6, "Paid leave permission", "TeamOps.Data.Migrations.V2_0006_PaidLeavePermission.sql"),
+            new(7, "Feature module schemas", "TeamOps.Data.Migrations.V2_0007_FeatureModules.sql")
         ];
 
         private static void DemandCleanOrVersionedDatabase(SqliteConnection conn)

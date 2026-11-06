@@ -100,7 +100,6 @@ namespace TeamOps.UI.Forms
             _authorization.Demand(_currentUser.Id, ModuleCodes.Tasks, PermissionActions.View);
             var context = _authorization.GetContext(_currentUser.Id);
             using var conn = _factory.CreateOpenConnection();
-            EnsureSchema(conn);
 
             var filter = CreateDefaultFilter();
             filter.SectorId = Program.CurrentSession?.SelectedSectorId
@@ -155,7 +154,6 @@ namespace TeamOps.UI.Forms
                 filter.SectorId);
             var authorizedSectorIds = _authorization.GetContext(_currentUser.Id).AuthorizedSectorIds;
             using var conn = _factory.CreateOpenConnection();
-            EnsureSchema(conn);
 
             var rows = QueryTasks(conn, filter, authorizedSectorIds).ToList();
 
@@ -199,7 +197,6 @@ namespace TeamOps.UI.Forms
         private void SendDetails(int taskId)
         {
             using var conn = _factory.CreateOpenConnection();
-            EnsureSchema(conn);
 
             var row = QueryTasks(conn, new TaskReportFilter
             {
@@ -365,44 +362,6 @@ namespace TeamOps.UI.Forms
             return string.Equals(locale, "ja-JP", StringComparison.OrdinalIgnoreCase)
                 ? match.LabelJp
                 : match.LabelPt;
-        }
-
-        private static void EnsureSchema(System.Data.IDbConnection conn)
-        {
-            conn.Execute(
-                @"
-                    CREATE TABLE IF NOT EXISTS Tasks (
-                        Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        Description TEXT NOT NULL,
-                        DueDate DATE NOT NULL,
-                        ShiftId INTEGER NOT NULL,
-                        SectorId INTEGER NOT NULL,
-                        AssigneeCodigoFJ TEXT,
-                        Status TEXT NOT NULL,
-                        CreatedByCodigoFJ TEXT NOT NULL,
-                        CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                        UpdatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                        StartedAt DATETIME,
-                        CompletedAt DATETIME,
-                        CancelledAt DATETIME,
-                        FOREIGN KEY (ShiftId) REFERENCES Shifts(Id),
-                        FOREIGN KEY (SectorId) REFERENCES Sectors(Id),
-                        FOREIGN KEY (AssigneeCodigoFJ) REFERENCES Operators(CodigoFJ),
-                        FOREIGN KEY (CreatedByCodigoFJ) REFERENCES Operators(CodigoFJ)
-                    );
-
-                    CREATE TABLE IF NOT EXISTS TaskStatusHistory (
-                        Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        TaskId INTEGER NOT NULL,
-                        PreviousStatus TEXT,
-                        NewStatus TEXT NOT NULL,
-                        ChangedByCodigoFJ TEXT NOT NULL,
-                        ChangedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                        Note TEXT,
-                        FOREIGN KEY (TaskId) REFERENCES Tasks(Id),
-                        FOREIGN KEY (ChangedByCodigoFJ) REFERENCES Operators(CodigoFJ)
-                    );"
-            );
         }
 
         private void PostJson(object payload)

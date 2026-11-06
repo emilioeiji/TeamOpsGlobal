@@ -713,7 +713,6 @@ namespace TeamOps.UI.Services
         {
             try
             {
-                SystemLogRepository.EnsureSchema(conn);
                 conn.Execute(
                     @"
                         INSERT INTO SystemLog

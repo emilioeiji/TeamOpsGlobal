@@ -82,7 +82,6 @@ namespace TeamOps.UI.Forms
             var context = _authorization.GetContext(_currentUser.Id);
             var authorizedSectorIds = context.AuthorizedSectorIds;
             using var conn = _factory.CreateOpenConnection();
-            MasterCardModuleService.EnsureSchema(conn);
 
             var filter = MasterCardModuleService.CreateDefaultFilter();
             filter.SectorId = Program.CurrentSession?.SelectedSectorId
@@ -131,7 +130,6 @@ namespace TeamOps.UI.Forms
                 filter.SectorId);
             var authorizedSectorIds = _authorization.GetContext(_currentUser.Id).AuthorizedSectorIds;
             using var conn = _factory.CreateOpenConnection();
-            MasterCardModuleService.EnsureSchema(conn);
 
             var rows = MasterCardModuleService.QueryReportRows(conn, filter)
                 .Where(item => authorizedSectorIds.Contains(item.SectorId))
@@ -159,7 +157,6 @@ namespace TeamOps.UI.Forms
         private void SendDetails(int id)
         {
             using var conn = _factory.CreateOpenConnection();
-            MasterCardModuleService.EnsureSchema(conn);
 
             var row = MasterCardModuleService.QueryReportRows(conn, new MasterCardModuleService.MasterCardReportFilter
             {

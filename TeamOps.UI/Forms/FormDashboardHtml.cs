@@ -454,7 +454,6 @@ namespace TeamOps.UI.Forms
                 return Array.Empty<object>();
 
             using var conn = _factory.CreateOpenConnection();
-            MasterCardModuleService.EnsureSchema(conn);
 
             return conn.Query<DashboardMasterCardPendingRow>(
                 @"SELECT
@@ -500,7 +499,6 @@ namespace TeamOps.UI.Forms
                 return 0;
 
             using var conn = _factory.CreateOpenConnection();
-            MasterCardModuleService.EnsureSchema(conn);
             return conn.ExecuteScalar<int>(
                 @"SELECT COUNT(1)
                   FROM MasterCards

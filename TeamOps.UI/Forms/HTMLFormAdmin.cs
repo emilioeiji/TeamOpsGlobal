@@ -218,26 +218,6 @@ namespace TeamOps.UI.Forms
         private static void EnsureAdminSchema(IDbConnection conn)
         {
             ProductionSchemaMigrator.Ensure(conn);
-            SystemLogRepository.EnsureSchema(conn);
-            EnsureColumn(conn, "Locals", "ShortCode", "TEXT");
-        }
-
-        private static void EnsureColumn(IDbConnection conn, string tableName, string columnName, string definition)
-        {
-            var exists = conn.ExecuteScalar<int>(
-                $@"
-                    SELECT COUNT(1)
-                    FROM pragma_table_info('{tableName}')
-                    WHERE name = @columnName;",
-                new
-                {
-                    columnName
-                }) > 0;
-
-            if (!exists)
-            {
-                conn.Execute($"ALTER TABLE {tableName} ADD COLUMN {columnName} {definition};");
-            }
         }
 
         private void SendEntityRows(string entityKey, JsonElement? root = null)

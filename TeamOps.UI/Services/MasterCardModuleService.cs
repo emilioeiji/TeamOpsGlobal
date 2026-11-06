@@ -15,62 +15,6 @@ namespace TeamOps.UI.Services
             ("completed", "Finalizado", "完了")
         };
 
-        internal static void EnsureSchema(IDbConnection conn)
-        {
-            conn.Execute(
-                @"
-                    CREATE TABLE IF NOT EXISTS MasterCards (
-                        Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        OperatorCodigoFJ TEXT NOT NULL,
-                        TrainerCodigoFJ TEXT NOT NULL,
-                        SectorId INTEGER NOT NULL,
-                        EquipmentId INTEGER NOT NULL,
-                        ProcessDescription TEXT NOT NULL,
-                        Notes TEXT,
-                        StartDate DATE NOT NULL,
-                        Status TEXT NOT NULL DEFAULT 'in_progress',
-                        ConcludedAt DATETIME,
-                        FollowDate DATE,
-                        FinalizedAt DATETIME,
-                        CreatedByCodigoFJ TEXT NOT NULL,
-                        CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                        UpdatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                        FOREIGN KEY (OperatorCodigoFJ) REFERENCES Operators(CodigoFJ),
-                        FOREIGN KEY (TrainerCodigoFJ) REFERENCES Operators(CodigoFJ),
-                        FOREIGN KEY (SectorId) REFERENCES Sectors(Id),
-                        FOREIGN KEY (EquipmentId) REFERENCES Equipments(Id),
-                        FOREIGN KEY (CreatedByCodigoFJ) REFERENCES Operators(CodigoFJ)
-                    );
-
-                    CREATE TABLE IF NOT EXISTS MasterCardStatusHistory (
-                        Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        MasterCardId INTEGER NOT NULL,
-                        PreviousStatus TEXT,
-                        NewStatus TEXT NOT NULL,
-                        ChangedByCodigoFJ TEXT NOT NULL,
-                        ChangedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                        Note TEXT,
-                        FOREIGN KEY (MasterCardId) REFERENCES MasterCards(Id),
-                        FOREIGN KEY (ChangedByCodigoFJ) REFERENCES Operators(CodigoFJ)
-                    );
-
-                    CREATE INDEX IF NOT EXISTS IX_MasterCards_Status_StartDate
-                    ON MasterCards(Status, StartDate);
-
-                    CREATE INDEX IF NOT EXISTS IX_MasterCards_FollowDate
-                    ON MasterCards(FollowDate, Status);
-
-                    CREATE INDEX IF NOT EXISTS IX_MasterCards_Operator_Trainer
-                    ON MasterCards(OperatorCodigoFJ, TrainerCodigoFJ);
-
-                    CREATE INDEX IF NOT EXISTS IX_MasterCards_ReportScope
-                    ON MasterCards(SectorId, EquipmentId, Status, StartDate);
-
-                    CREATE INDEX IF NOT EXISTS IX_MasterCardStatusHistory_MasterCardId
-                    ON MasterCardStatusHistory(MasterCardId, ChangedAt);"
-            );
-        }
-
         internal static IEnumerable<object> QueryStatuses()
         {
             return Statuses.Select(status => new
@@ -471,7 +415,6 @@ namespace TeamOps.UI.Services
 
         internal static int CountByStatus(IDbConnection conn, string status)
         {
-            EnsureSchema(conn);
 
             return conn.ExecuteScalar<int>(
                 "SELECT COUNT(1) FROM MasterCards WHERE Status = @status;",

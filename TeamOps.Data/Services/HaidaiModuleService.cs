@@ -29,73 +29,6 @@ namespace TeamOps.UI.Services
         public void EnsureSchema()
         {
             using var conn = _factory.CreateOpenConnection();
-
-            conn.Execute(
-                @"
-                    CREATE TABLE IF NOT EXISTS HaidaiAssignments (
-                        Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        ScheduleDate TEXT NOT NULL,
-                        ShiftId INTEGER NOT NULL,
-                        SectorId INTEGER NOT NULL,
-                        OperatorCodigoFJ TEXT NOT NULL,
-                        LocalId INTEGER,
-                        AssignmentCode TEXT,
-                        PairKey TEXT,
-                        IsTrainee INTEGER NOT NULL DEFAULT 0,
-                        TrainerCodigoFJ TEXT,
-                        CountsTowardKousu INTEGER NOT NULL DEFAULT 1,
-                        IsLineupActive INTEGER NOT NULL DEFAULT 1,
-                        IsHolidayWork INTEGER NOT NULL DEFAULT 0,
-                        AvailabilityStatus TEXT,
-                        Notes TEXT,
-                        UpdatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                        FOREIGN KEY (ShiftId) REFERENCES Shifts(Id),
-                        FOREIGN KEY (SectorId) REFERENCES Sectors(Id),
-                        FOREIGN KEY (OperatorCodigoFJ) REFERENCES Operators(CodigoFJ),
-                        FOREIGN KEY (LocalId) REFERENCES Locals(Id),
-                        FOREIGN KEY (TrainerCodigoFJ) REFERENCES Operators(CodigoFJ)
-                    );
-
-                    CREATE UNIQUE INDEX IF NOT EXISTS IX_HaidaiAssignments_DateShiftSectorOperator
-                    ON HaidaiAssignments(ScheduleDate, ShiftId, SectorId, OperatorCodigoFJ);
-
-                    CREATE INDEX IF NOT EXISTS IX_HaidaiAssignments_DateShiftSector
-                    ON HaidaiAssignments(ScheduleDate, ShiftId, SectorId);");
-
-            EnsureColumn(conn, "Locals", "ShortCode", "TEXT");
-            EnsureColumn(conn, "HaidaiAssignments", "IsLineupActive", "INTEGER NOT NULL DEFAULT 1");
-            EnsureColumn(conn, "HaidaiAssignments", "IsHolidayWork", "INTEGER NOT NULL DEFAULT 0");
-            EnsureColumn(conn, "HaidaiAssignments", "AvailabilityStatus", "TEXT");
-
-            conn.Execute(
-                @"
-                    CREATE TABLE IF NOT EXISTS HaidaiMovements (
-                        Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        ScheduleDate TEXT NOT NULL,
-                        ShiftId INTEGER NOT NULL,
-                        SectorId INTEGER NOT NULL,
-                        OperatorCodigoFJ TEXT NOT NULL,
-                        MovementType TEXT NOT NULL,
-                        EventTime TEXT,
-                        LocalId INTEGER,
-                        AssignmentCode TEXT,
-                        PairKey TEXT,
-                        ReplacementOperatorCodigoFJ TEXT,
-                        Reason TEXT,
-                        CreatedByCodigoFJ TEXT NOT NULL,
-                        CreatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                        FOREIGN KEY (ShiftId) REFERENCES Shifts(Id),
-                        FOREIGN KEY (SectorId) REFERENCES Sectors(Id),
-                        FOREIGN KEY (OperatorCodigoFJ) REFERENCES Operators(CodigoFJ),
-                        FOREIGN KEY (LocalId) REFERENCES Locals(Id),
-                        FOREIGN KEY (ReplacementOperatorCodigoFJ) REFERENCES Operators(CodigoFJ),
-                        FOREIGN KEY (CreatedByCodigoFJ) REFERENCES Operators(CodigoFJ)
-                    );
-
-                    CREATE INDEX IF NOT EXISTS IX_HaidaiMovements_DateShiftSectorOperator
-                    ON HaidaiMovements(ScheduleDate, ShiftId, SectorId, OperatorCodigoFJ);");
-
-            EnsureColumn(conn, "HaidaiMovements", "EventDateTime", "TEXT");
             _sectorTopology = LoadSectorTopology(conn);
         }
 
@@ -2632,21 +2565,6 @@ namespace TeamOps.UI.Services
                         LIMIT 1;",
                     new { CodigoFJ = codigoFJ })
                 ?? codigoFJ;
-        }
-
-        private static void EnsureColumn(System.Data.IDbConnection conn, string tableName, string columnName, string definition)
-        {
-            var exists = conn.ExecuteScalar<int>(
-                $@"
-                    SELECT COUNT(1)
-                    FROM pragma_table_info('{tableName}')
-                    WHERE name = @ColumnName;",
-                new { ColumnName = columnName }) > 0;
-
-            if (!exists)
-            {
-                conn.Execute($"ALTER TABLE {tableName} ADD COLUMN {columnName} {definition};");
-            }
         }
 
         private static string BuildExportFileName(string sectorName, string shiftName)
