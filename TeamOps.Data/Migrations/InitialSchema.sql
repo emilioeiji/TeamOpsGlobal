@@ -48,36 +48,29 @@ CREATE TABLE IF NOT EXISTS Sectors (
     FOREIGN KEY (OrganizationNodeId) REFERENCES OrganizationNodes(Id)
 );
 
-CREATE TABLE IF NOT EXISTS GroupLeaders (
-    Id           INTEGER  PRIMARY KEY AUTOINCREMENT,
-    Name         TEXT     NOT NULL,
-    Login        TEXT     UNIQUE NOT NULL,
-    PasswordHash TEXT     NOT NULL,
-    AccessLevel  INTEGER  NOT NULL DEFAULT 1,
-    CreatedAt    DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS Assignments (
-    Id INTEGER PRIMARY KEY AUTOINCREMENT,
-    GLId INTEGER NOT NULL,
-    OperatorCodigoFJ TEXT NOT NULL,
-    AssignedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (GLId) REFERENCES GroupLeaders(Id),
-    FOREIGN KEY (OperatorCodigoFJ) REFERENCES Operators(CodigoFJ)
-);
-
 CREATE TABLE IF NOT EXISTS Users (
     Id           INTEGER  PRIMARY KEY AUTOINCREMENT,
     Login        TEXT     UNIQUE,
     CodigoFJ     TEXT,
     Name         TEXT,
     PasswordHash TEXT     NOT NULL,
-    AccessLevel  INTEGER  NOT NULL DEFAULT 1, -- compatibilidade legada; autorizacao usa ProfileId
     CreatedAt    DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (
         CodigoFJ
     )
     REFERENCES Operators (CodigoFJ) 
+);
+
+CREATE TABLE IF NOT EXISTS OperatorLeaderAssignments (
+    LeaderCodigoFJ   TEXT NOT NULL,
+    OperatorCodigoFJ TEXT NOT NULL,
+    AssignedAt       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    AssignedByUserId INTEGER,
+    PRIMARY KEY (LeaderCodigoFJ, OperatorCodigoFJ),
+    CHECK (LeaderCodigoFJ <> OperatorCodigoFJ),
+    FOREIGN KEY (LeaderCodigoFJ) REFERENCES Operators(CodigoFJ) ON DELETE CASCADE,
+    FOREIGN KEY (OperatorCodigoFJ) REFERENCES Operators(CodigoFJ) ON DELETE CASCADE,
+    FOREIGN KEY (AssignedByUserId) REFERENCES Users(Id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS Locals (
@@ -573,7 +566,6 @@ VALUES
 (NULL, 4, 4, 'Error', 'Erro', 'エラー', '#FFFFFF', '#516174', 4, 1);
 
 CREATE INDEX IF NOT EXISTS IX_Operators_BadgeCode ON Operators(BadgeCode);
-CREATE INDEX IF NOT EXISTS IX_GL_Login ON GroupLeaders(Login);
 
 CREATE TABLE IF NOT EXISTS Ec2AdministratorImports (
     Id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -686,4 +678,5 @@ INSERT OR IGNORE INTO ProductionPartCodeStyles
 (PartCode, ColorHex, TextColorHex, Description, IsActive)
 VALUES
 ('RJ2A7', '#D93F3F', '#FFFFFF', 'Destaque EC2 Administrator', 1);
-CREATE INDEX IF NOT EXISTS IX_Assignments_GL_Operator ON Assignments(GLId, OperatorCodigoFJ);
+CREATE INDEX IF NOT EXISTS IX_OperatorLeaderAssignments_Operator
+ON OperatorLeaderAssignments(OperatorCodigoFJ, LeaderCodigoFJ);

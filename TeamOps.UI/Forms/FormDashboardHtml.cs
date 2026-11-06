@@ -149,7 +149,7 @@ namespace TeamOps.UI.Forms
                     if (!CanOpen(ModuleCodes.AccessControl, PermissionActions.Administer))
                         ShowAccessDeniedAsync();
                     else
-                        OpenDialog(() => new FormAssignments());
+                        OpenDialog(() => new FormAssignments(_user));
                     break;
 
                 case "open:relatorios":

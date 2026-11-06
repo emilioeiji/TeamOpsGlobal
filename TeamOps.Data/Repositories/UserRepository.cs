@@ -46,9 +46,9 @@ namespace TeamOps.Data.Repositories
             using var conn = _factory.CreateOpenConnection();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-                INSERT INTO Users (Login, CodigoFJ, Name, PasswordHash, AccessLevel, ProfileId,
+                INSERT INTO Users (Login, CodigoFJ, Name, PasswordHash, ProfileId,
                                    ReferenceNodeId, IsActive)
-                VALUES (@login, @codFJ, @name, @pass, 1, @profileId,
+                VALUES (@login, @codFJ, @name, @pass, @profileId,
                         @referenceNodeId, @isActive);
                 SELECT last_insert_rowid();";
             cmd.Parameters.AddWithValue("@login", user.Login);

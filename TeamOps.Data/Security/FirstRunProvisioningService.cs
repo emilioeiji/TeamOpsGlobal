@@ -44,9 +44,9 @@ namespace TeamOps.Data.Security
                 insert.Transaction = transaction;
                 insert.CommandText = @"
                     INSERT INTO Users
-                        (Login, CodigoFJ, Name, PasswordHash, AccessLevel, ProfileId,
+                        (Login, CodigoFJ, Name, PasswordHash, ProfileId,
                          ReferenceNodeId, IsActive, PasswordChangedAt)
-                    SELECT @login, NULL, @name, @passwordHash, 1,
+                    SELECT @login, NULL, @name, @passwordHash,
                            profile.Id, root.Id, 1, CURRENT_TIMESTAMP
                     FROM AccessProfiles profile
                     CROSS JOIN OrganizationNodes root

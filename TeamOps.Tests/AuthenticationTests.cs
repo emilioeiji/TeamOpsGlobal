@@ -97,26 +97,16 @@ public sealed class AuthenticationTests
     }
 
     [Fact]
-    public void Authentication_IgnoresLegacyAccessLevelColumn()
+    public void CleanSchema_DoesNotContainLegacyAccessLevelColumn()
     {
         using var context = new DatabaseTestContext();
-        var userId = new FirstRunProvisioningService(context.Factory)
+        new FirstRunProvisioningService(context.Factory)
             .ProvisionDirector("schema.v2.director", "Schema V2 Director", StrongPassword);
 
-        using (var conn = context.Factory.CreateOpenConnection())
-        using (var cmd = conn.CreateCommand())
-        {
-            cmd.CommandText = "UPDATE Users SET AccessLevel = 999 WHERE Id = @id;";
-            cmd.Parameters.AddWithValue("@id", userId);
-            cmd.ExecuteNonQuery();
-        }
-
-        var result = new AuthenticationService(context.Factory)
-            .Authenticate("schema.v2.director", StrongPassword);
-
-        Assert.True(result.Succeeded);
-        Assert.Equal("DIRECTOR", new AuthorizationService(context.Factory)
-            .GetContext(result.User!.Id).ProfileCode);
+        using var conn = context.Factory.CreateOpenConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM pragma_table_info('Users') WHERE name = 'AccessLevel';";
+        Assert.Equal(0L, cmd.ExecuteScalar());
     }
 
     [Theory]

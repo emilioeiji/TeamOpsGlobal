@@ -51,10 +51,10 @@ namespace TeamOps.Data.Security
             var hash = BCrypt.Net.BCrypt.HashPassword(password, workFactor: 12);
             var userId = conn.ExecuteScalar<int>(@"
                 INSERT INTO Users
-                    (Login, CodigoFJ, Name, PasswordHash, AccessLevel, ProfileId, ReferenceNodeId,
+                    (Login, CodigoFJ, Name, PasswordHash, ProfileId, ReferenceNodeId,
                      IsActive, PasswordChangedAt, SessionVersion)
                 VALUES
-                    (@Login, @CodigoFJ, @Name, @hash, 1, @profileId, @ReferenceNodeId,
+                    (@Login, @CodigoFJ, @Name, @hash, @profileId, @ReferenceNodeId,
                      @isActive, CURRENT_TIMESTAMP, 1);
                 SELECT last_insert_rowid();",
                 new

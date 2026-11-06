@@ -34,7 +34,7 @@
             // 
             // lblGL
             // 
-            this.lblGL.Text = "Group Leader:";
+            this.lblGL.Text = "Lider operacional:";
             this.lblGL.Location = new System.Drawing.Point(20, 20);
             this.lblGL.AutoSize = true;
             // 
@@ -93,7 +93,7 @@
             this.Controls.Add(this.btnAdd);
             this.Controls.Add(this.btnRemove);
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent;
-            this.Text = "Assignments";
+            this.Text = "Atribuicao de operadores";
             this.ResumeLayout(false);
             this.PerformLayout();
         }
