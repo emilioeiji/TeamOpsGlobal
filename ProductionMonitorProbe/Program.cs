@@ -15,7 +15,7 @@ var machineRepository = new ProductionMachineRepository(factory);
 var eventRepository = new ProductionEventRepository(factory);
 var importer = new ProductionFileImporter(factory, machineRepository, eventRepository);
 var analytics = new ProductionAnalyticsService(factory);
-const int DadSectorId = 2;
+var sectorCatalog = new SectorCatalogService(factory);
 
 var command = args.Length > 0
     ? args[0].Trim().ToLowerInvariant()
@@ -764,7 +764,7 @@ void ShowDashboards()
 
 void RunImportProfile(string[] profileArgs)
 {
-    var options = ImportProfileOptions.Parse(profileArgs);
+    var options = ImportProfileOptions.Parse(profileArgs, sectorCatalog.ResolveFilter, sectorCatalog.GetLabel);
     var totalWatch = Stopwatch.StartNew();
     PrintRuntimeConfigDiagnostics();
     var importOptions = options.Reimport && options.Date.HasValue
@@ -1365,6 +1365,8 @@ void RunStatusHardeningChecks()
 {
     using var conn = factory.CreateOpenConnection();
     ProductionSchemaMigrator.Ensure(conn);
+    var dadSectorId = sectorCatalog.ResolveRequired("DAD");
+    var gBareruSectorId = sectorCatalog.ResolveRequired("G-BARERU");
 
     var indexSql = conn.ExecuteScalar<string>(
         @"
@@ -1401,25 +1403,25 @@ void RunStatusHardeningChecks()
                 COALESCE(NamePt, '') AS NamePt,
                 COALESCE(ColorHex, '') AS ColorHex
             FROM MachineStatuses
-            WHERE COALESCE(SectorId, 0) IN (0, 2)
+            WHERE COALESCE(SectorId, 0) IN (0, @dadSectorId)
               AND StatusCode IN (0, 1, 3, 4, 5, 10, 17, 18, 19, 99);"
-    ).ToList();
+        , new { dadSectorId }).ToList();
 
     ExpectStatus(statuses, null, 0, 0, "Running");
     ExpectStatus(statuses, null, 3, 3, "StopCounts");
-    ExpectStatus(statuses, 2, 0, 0, "Running");
-    ExpectStatus(statuses, 2, 3, 3, "StopNoCount");
-    ExpectStatus(statuses, 2, 17, 1, "StopNoCount");
-    ExpectStatus(statuses, 2, 18, 1, "StopNoCount");
-    ExpectStatus(statuses, 2, 19, 1, "StopNoCount");
+    ExpectStatus(statuses, dadSectorId, 0, 0, "Running");
+    ExpectStatus(statuses, dadSectorId, 3, 3, "StopNoCount");
+    ExpectStatus(statuses, dadSectorId, 17, 1, "StopNoCount");
+    ExpectStatus(statuses, dadSectorId, 18, 1, "StopNoCount");
+    ExpectStatus(statuses, dadSectorId, 19, 1, "StopNoCount");
 
-    var gBareruFive = ResolveStatusForProbe(statuses, 1, 5);
+    var gBareruFive = ResolveStatusForProbe(statuses, gBareruSectorId, 5);
     Require(gBareruFive == null || gBareruFive.Classification == "StopCounts", "GBareru status 5 deve ficar no fallback antigo ou StopCounts.");
 
-    var gBareruTen = ResolveStatusForProbe(statuses, 1, 10);
+    var gBareruTen = ResolveStatusForProbe(statuses, gBareruSectorId, 10);
     Require(gBareruTen == null || gBareruTen.Classification == "StopCounts", "GBareru status 10 deve ficar no fallback antigo ou StopCounts.");
 
-    var dadUnknown = ResolveStatusForProbe(statuses, 2, 99);
+    var dadUnknown = ResolveStatusForProbe(statuses, dadSectorId, 99);
     Require(dadUnknown == null || dadUnknown.Classification == "StopCounts", "DAD status 99 deve ficar desconhecido ou conservador StopCounts.");
 
     Require(CalculateProbeEfficiency(6, 0, 4) == 100d, "StopNoCount deve sair do denominador: 6h running + 4h no-count = 100%.");
@@ -1432,6 +1434,7 @@ void RunStatusHardeningChecks()
 ProductionSchemaInspection InspectProductionSchema(System.Data.IDbConnection conn)
 {
     var issues = new List<string>();
+    var dadSectorId = sectorCatalog.ResolveRequired("DAD");
     var journalMode = conn.ExecuteScalar<string>("PRAGMA journal_mode;") ?? string.Empty;
     var quickCheck = conn.ExecuteScalar<string>("PRAGMA quick_check;") ?? string.Empty;
 
@@ -1548,7 +1551,7 @@ ProductionSchemaInspection InspectProductionSchema(System.Data.IDbConnection con
               AND StatusCode IN (0, 1, 3, 4, 17, 18, 19);",
         new
         {
-            DadSectorId
+            DadSectorId = dadSectorId
         }
     );
     if (dadSeedCount < 7)
@@ -1565,7 +1568,7 @@ ProductionSchemaInspection InspectProductionSchema(System.Data.IDbConnection con
               AND Classification = 'StopNoCount';",
         new
         {
-            DadSectorId
+            DadSectorId = dadSectorId
         }
     );
     if (dadNoCountCount < 4)
@@ -1586,7 +1589,7 @@ ProductionSchemaInspection InspectProductionSchema(System.Data.IDbConnection con
                 ORDER BY StatusCode;",
             new
             {
-                DadSectorId
+                DadSectorId = dadSectorId
             })
             .Select(row => $"{row.StatusCode}:{row.Classification}")
             .DefaultIfEmpty("(none)");
@@ -1599,6 +1602,7 @@ ProductionSchemaInspection InspectProductionSchema(System.Data.IDbConnection con
 
 void RepairProductionStatusSeeds(System.Data.IDbConnection conn)
 {
+    var dadSectorId = sectorCatalog.ResolveRequired("DAD");
     conn.Execute(
         @"
             INSERT OR IGNORE INTO MachineStatuses
@@ -1633,7 +1637,7 @@ void RepairProductionStatusSeeds(System.Data.IDbConnection conn)
             WHERE SectorId = @DadSectorId AND StatusCode IN (17, 18, 19);",
         new
         {
-            DadSectorId
+            DadSectorId = dadSectorId
         });
 }
 
@@ -1641,6 +1645,8 @@ void RunProductionDiagnostics()
 {
     using var conn = factory.CreateOpenConnection();
     ProductionSchemaMigrator.Ensure(conn);
+    var dadSectorId = sectorCatalog.ResolveRequired("DAD");
+    var gBareruSectorId = sectorCatalog.ResolveRequired("G-BARERU");
 
     var eventCount = conn.ExecuteScalar<long>("SELECT COUNT(1) FROM MachineEvents;");
     var currentCount = conn.ExecuteScalar<long>("SELECT COUNT(1) FROM MachineCurrentStatus;");
@@ -1648,21 +1654,22 @@ void RunProductionDiagnostics()
     var machineCount = conn.ExecuteScalar<long>("SELECT COUNT(1) FROM Machines WHERE COALESCE(IsActive, 1) = 1;");
     var dadMachineCount = conn.ExecuteScalar<long>(
         "SELECT COUNT(1) FROM Machines WHERE COALESCE(IsActive, 1) = 1 AND SectorId = @DadSectorId;",
-        new { DadSectorId });
+        new { DadSectorId = dadSectorId });
     var dadEventCount = conn.ExecuteScalar<long>(
         @"
             SELECT COUNT(1)
             FROM MachineEvents me
             JOIN Machines m ON m.Id = me.MachineId
             WHERE m.SectorId = @DadSectorId;",
-        new { DadSectorId });
+        new { DadSectorId = dadSectorId });
     var gBareruProcedureTimeCount = conn.ExecuteScalar<long>(
         @"
             SELECT COUNT(DISTINCT upper(trim(ProcedureCode)))
             FROM ProductionProcedureTimes
-            WHERE SectorId = 1
+            WHERE SectorId = @gBareruSectorId
               AND COALESCE(IsActive, 1) = 1
-              AND upper(trim(ProcedureCode)) IN ('ECII', 'BUNKATSU', 'DCS');");
+              AND upper(trim(ProcedureCode)) IN ('ECII', 'BUNKATSU', 'DCS');",
+        new { gBareruSectorId });
     var minEvent = conn.ExecuteScalar<string>("SELECT MIN(EventDateTime) FROM MachineEvents;") ?? string.Empty;
     var maxEvent = conn.ExecuteScalar<string>("SELECT MAX(EventDateTime) FROM MachineEvents;") ?? string.Empty;
 
@@ -1708,7 +1715,7 @@ void RunProductionDiagnostics()
             ORDER BY StatusCode;",
         new
         {
-            DadSectorId
+            DadSectorId = dadSectorId
         }))
     {
         Console.WriteLine($"  Sector={row.SectorId} Code={row.StatusCode} Display={row.DisplayCode} Classification={row.Classification} Name={row.NamePt}");
@@ -1769,12 +1776,9 @@ void RunProductionAudit(string[] auditArgs)
         else if (arg.Equals("--sector", StringComparison.OrdinalIgnoreCase) && i + 1 < auditArgs.Length)
         {
             sectorLabel = auditArgs[++i].Trim().ToLowerInvariant();
-            sectorId = sectorLabel switch
-            {
-                "gbareru" or "g-bareru" or "1" => 1,
-                "dad" or "2" => 2,
-                _ => null
-            };
+            sectorId = sectorLabel is "all" or "*"
+                ? null
+                : sectorCatalog.ResolveFilter(sectorLabel);
         }
         else if (arg.Equals("--machine", StringComparison.OrdinalIgnoreCase) && i + 1 < auditArgs.Length)
         {
@@ -1984,7 +1988,7 @@ void RunValidateReports(string[] validateArgs)
     var totalWatch = Stopwatch.StartNew();
     var dashboardWatch = Stopwatch.StartNew();
     var dashboard = analytics.BuildDashboard(filter);
-    if (sectorId <= 0 || sectorId == 1)
+    if (sectorId <= 0 || sectorId == sectorCatalog.ResolveRequired("G-BARERU"))
     {
         dashboard.GBareruCapacityForecast = new TeamOps.UI.Services.GBareruCapacityForecastService(factory)
             .BuildForecast(filter, dashboard);
@@ -2325,7 +2329,8 @@ static bool IndexExists(System.Data.IDbConnection conn, string indexName)
 
 void RunStatusReport(string[] reportArgs)
 {
-    var options = StatusReportOptions.Parse(reportArgs);
+    var options = StatusReportOptions.Parse(reportArgs, sectorCatalog.ResolveFilter, sectorCatalog.GetLabel);
+    var dadSectorId = sectorCatalog.ResolveRequired("DAD");
 
     using var conn = factory.CreateOpenConnection();
     ProductionSchemaMigrator.Ensure(conn);
@@ -2381,13 +2386,13 @@ void RunStatusReport(string[] reportArgs)
     }
 
     var dadWarnings = rows
-        .Where(row => row.SectorId == DadSectorId && !string.IsNullOrWhiteSpace(row.Warning))
+        .Where(row => row.SectorId == dadSectorId && !string.IsNullOrWhiteSpace(row.Warning))
         .ToList();
 
     Console.WriteLine();
     Console.WriteLine("=== DAD FOCUS ===");
-    Console.WriteLine($"KnownCodesFound={string.Join(",", rows.Where(row => row.SectorId == DadSectorId && IsDadSeedStatusCode(row.StatusCode)).Select(row => row.StatusCode).Distinct().OrderBy(code => code))}");
-    Console.WriteLine($"UnexpectedCodesFound={string.Join(",", rows.Where(row => row.SectorId == DadSectorId && !IsDadSeedStatusCode(row.StatusCode)).Select(row => row.StatusCode).Distinct().OrderBy(code => code))}");
+    Console.WriteLine($"KnownCodesFound={string.Join(",", rows.Where(row => row.SectorId == dadSectorId && IsDadSeedStatusCode(row.StatusCode)).Select(row => row.StatusCode).Distinct().OrderBy(code => code))}");
+    Console.WriteLine($"UnexpectedCodesFound={string.Join(",", rows.Where(row => row.SectorId == dadSectorId && !IsDadSeedStatusCode(row.StatusCode)).Select(row => row.StatusCode).Distinct().OrderBy(code => code))}");
     Console.WriteLine($"WarningRows={dadWarnings.Count}");
 
     if (options.CsvPath.Length > 0)
@@ -2501,7 +2506,7 @@ static ShiftRow ResolveValidateShift(System.Data.IDbConnection conn, string shif
         ?? throw new InvalidOperationException($"Turno nao encontrado: {shiftFilter}");
 }
 
-static int ResolveValidateSector(string sectorFilter)
+int ResolveValidateSector(string sectorFilter)
 {
     var normalized = (sectorFilter ?? string.Empty).Trim();
     if (string.IsNullOrWhiteSpace(normalized) || normalized.Equals("all", StringComparison.OrdinalIgnoreCase))
@@ -2509,18 +2514,7 @@ static int ResolveValidateSector(string sectorFilter)
         return 0;
     }
 
-    if (normalized.Equals("gbareru", StringComparison.OrdinalIgnoreCase)
-        || normalized.Equals("g-bareru", StringComparison.OrdinalIgnoreCase))
-    {
-        return 1;
-    }
-
-    if (normalized.Equals("dad", StringComparison.OrdinalIgnoreCase))
-    {
-        return DadSectorId;
-    }
-
-    return int.Parse(normalized, CultureInfo.InvariantCulture);
+    return sectorCatalog.ResolveFilter(normalized);
 }
 
 static int ResolveValidateLocal(System.Data.IDbConnection conn, string areaFilter)
@@ -2732,7 +2726,7 @@ static StatusDefinitionProbeRow? ResolveStatusForProbe(
         ?? statuses.FirstOrDefault(item => !item.SectorId.HasValue && item.StatusCode == statusCode);
 }
 
-static List<StatusReportRow> BuildStatusReportRows(
+List<StatusReportRow> BuildStatusReportRows(
     IReadOnlyList<StatusEventProbeRow> events,
     IReadOnlyList<StatusDefinitionProbeRow> statuses)
 {
@@ -2787,7 +2781,7 @@ static List<StatusReportRow> BuildStatusReportRows(
         .ToList();
 }
 
-static StatusReportRow CreateStatusReportRow(StatusReportAccumulator accumulator)
+StatusReportRow CreateStatusReportRow(StatusReportAccumulator accumulator)
 {
     var countsInDenominator = CountsInEfficiencyDenominator(accumulator.Classification);
     var estimatedImpact = countsInDenominator && !accumulator.Classification.Equals("Running", StringComparison.OrdinalIgnoreCase)
@@ -2811,7 +2805,7 @@ static StatusReportRow CreateStatusReportRow(StatusReportAccumulator accumulator
     };
 }
 
-static StatusDefinitionResolution ResolveStatusForReport(
+StatusDefinitionResolution ResolveStatusForReport(
     IReadOnlyList<StatusDefinitionProbeRow> statuses,
     int? sectorId,
     int statusCode)
@@ -2831,7 +2825,7 @@ static StatusDefinitionResolution ResolveStatusForReport(
     return new StatusDefinitionResolution(null, "unknown-conservative", false);
 }
 
-static string ResolveStatusSource(int? sectorId, int statusCode, bool fallback)
+string ResolveStatusSource(int? sectorId, int statusCode, bool fallback)
 {
     if (fallback)
     {
@@ -2845,7 +2839,7 @@ static string ResolveStatusSource(int? sectorId, int statusCode, bool fallback)
             : "auto-created-or-manual-global";
     }
 
-    if (sectorId == DadSectorId)
+    if (sectorId == sectorCatalog.ResolveRequired("DAD"))
     {
         return IsDadSeedStatusCode(statusCode)
             ? "setorial-seed"
@@ -2880,19 +2874,19 @@ static string NormalizeReportClassification(string? classification, int? display
             : "StopCounts";
 }
 
-static string ResolveSectorLabel(int? sectorId, string sectorName, string lineCode)
+string ResolveSectorLabel(int? sectorId, string sectorName, string lineCode)
 {
     if (!string.IsNullOrWhiteSpace(sectorName))
     {
         return sectorName.Trim();
     }
 
-    return sectorId switch
+    if (sectorId.HasValue && sectorId.Value > 0)
     {
-        1 => "G-Bareru",
-        2 => "DAD",
-        _ => string.IsNullOrWhiteSpace(lineCode) ? $"Sector {sectorId.GetValueOrDefault()}" : lineCode.Trim()
-    };
+        return sectorCatalog.GetLabel(sectorId.Value);
+    }
+
+    return string.IsNullOrWhiteSpace(lineCode) ? "Sector 0" : lineCode.Trim();
 }
 
 static bool CountsInEfficiencyDenominator(string classification)
@@ -2900,16 +2894,17 @@ static bool CountsInEfficiencyDenominator(string classification)
     return !classification.Equals("StopNoCount", StringComparison.OrdinalIgnoreCase);
 }
 
-static string BuildWarning(StatusReportAccumulator accumulator)
+string BuildWarning(StatusReportAccumulator accumulator)
 {
     var warnings = new List<string>();
+    var dadSectorId = sectorCatalog.ResolveRequired("DAD");
 
-    if (accumulator.SectorId == DadSectorId && !IsDadSeedStatusCode(accumulator.StatusCode))
+    if (accumulator.SectorId == dadSectorId && !IsDadSeedStatusCode(accumulator.StatusCode))
     {
         warnings.Add("UNKNOWN_DAD_STATUS");
     }
 
-    if (accumulator.SectorId == DadSectorId && accumulator.UsedFallback)
+    if (accumulator.SectorId == dadSectorId && accumulator.UsedFallback)
     {
         warnings.Add("FALLBACK_USED_FOR_DAD");
     }
@@ -2919,7 +2914,7 @@ static string BuildWarning(StatusReportAccumulator accumulator)
         warnings.Add("AUTO_CREATED_STATUS");
     }
 
-    if (accumulator.SectorId == DadSectorId
+    if (accumulator.SectorId == dadSectorId
         && !accumulator.Classification.Equals("Running", StringComparison.OrdinalIgnoreCase)
         && CountsInEfficiencyDenominator(accumulator.Classification)
         && accumulator.TotalMinutes > 0)
@@ -2969,9 +2964,10 @@ sealed class StatusReportOptions
     public DateTime? EndDate { get; private init; }
     public int SectorId { get; private init; }
     public string CsvPath { get; private init; } = string.Empty;
-    public string SectorIdLabel => SectorId <= 0 ? "(all)" : SectorId.ToString();
+    public string SectorIdLabel { get; private init; } = "(all)";
 
-    public static StatusReportOptions Parse(string[] args)
+    public static StatusReportOptions Parse(string[] args, Func<string, int> resolveSector,
+        Func<int, string> getSectorLabel)
     {
         DateTime? startDate = null;
         DateTime? endDate = null;
@@ -2991,12 +2987,7 @@ sealed class StatusReportOptions
             }
             else if (arg.Equals("--sector", StringComparison.OrdinalIgnoreCase) && index + 1 < args.Length)
             {
-                var sectorValue = args[++index].Trim();
-                sectorId = sectorValue.Equals("dad", StringComparison.OrdinalIgnoreCase)
-                    ? 2
-                    : sectorValue.Equals("gbareru", StringComparison.OrdinalIgnoreCase) || sectorValue.Equals("g-bareru", StringComparison.OrdinalIgnoreCase)
-                        ? 1
-                        : int.Parse(sectorValue, CultureInfo.InvariantCulture);
+                sectorId = resolveSector(args[++index]);
             }
             else if (arg.Equals("--csv", StringComparison.OrdinalIgnoreCase) && index + 1 < args.Length)
             {
@@ -3009,6 +3000,7 @@ sealed class StatusReportOptions
             StartDate = startDate,
             EndDate = endDate,
             SectorId = sectorId,
+            SectorIdLabel = sectorId <= 0 ? "(all)" : getSectorLabel(sectorId),
             CsvPath = csvPath
         };
     }
@@ -3158,9 +3150,10 @@ sealed class ImportProfileOptions
     public DateTime? Date { get; private init; }
     public int SectorId { get; private init; }
     public bool Reimport { get; private init; }
-    public string SectorLabel => SectorId <= 0 ? "(all)" : SectorId == 2 ? "dad" : SectorId == 1 ? "gbareru" : SectorId.ToString(CultureInfo.InvariantCulture);
+    public string SectorLabel { get; private init; } = "(all)";
 
-    public static ImportProfileOptions Parse(string[] args)
+    public static ImportProfileOptions Parse(string[] args, Func<string, int> resolveSector,
+        Func<int, string> getSectorLabel)
     {
         DateTime? date = null;
         var sectorId = 0;
@@ -3175,12 +3168,7 @@ sealed class ImportProfileOptions
             }
             else if (arg.Equals("--sector", StringComparison.OrdinalIgnoreCase) && index + 1 < args.Length)
             {
-                var sectorValue = args[++index].Trim();
-                sectorId = sectorValue.Equals("dad", StringComparison.OrdinalIgnoreCase)
-                    ? 2
-                    : sectorValue.Equals("gbareru", StringComparison.OrdinalIgnoreCase) || sectorValue.Equals("g-bareru", StringComparison.OrdinalIgnoreCase)
-                        ? 1
-                        : int.Parse(sectorValue, CultureInfo.InvariantCulture);
+                sectorId = resolveSector(args[++index]);
             }
             else if (arg.Equals("--reimport", StringComparison.OrdinalIgnoreCase))
             {
@@ -3192,6 +3180,7 @@ sealed class ImportProfileOptions
         {
             Date = date,
             SectorId = sectorId,
+            SectorLabel = sectorId <= 0 ? "(all)" : getSectorLabel(sectorId),
             Reimport = reimport
         };
     }
