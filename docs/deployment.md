@@ -64,6 +64,8 @@ Substituir `nome-do-servidor` e `compartilhamento` pelos valores homologados pel
 
 `DatabasePath` define onde o SQLite sera aberto. Ele deve continuar em disco local nesta etapa, por exemplo `C:\TeamOps\DB\teamops.db`. Alterar `StorageRoot` nao move nem recria o banco.
 
+O aplicativo bloqueia `DatabasePath` UNC e unidades de rede mapeadas durante a inicializacao. Essa protecao e intencional: arquivos operacionais podem usar UNC, mas o mecanismo de bloqueio do SQLite nao e considerado seguro para este projeto sobre SMB. Uma futura centralizacao multiestacao devera usar um servico/API ou banco servidor, e nao compartilhar diretamente o arquivo `.db`.
+
 Recomendacoes:
 
 - Usar pasta com backup regular.

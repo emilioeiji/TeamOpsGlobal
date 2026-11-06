@@ -30,11 +30,22 @@ namespace TeamOps.UI
 
             ApplicationConfiguration.Initialize();
 
-            DbSettings = new DbSettings(portableMode: false);
-            var initializer = new DbInitializer(DbSettings);
-            initializer.EnsureCreated();
-
-            ConnectionFactory = new SqliteConnectionFactory(DbSettings);
+            try
+            {
+                DbSettings = new DbSettings(portableMode: false);
+                var initializer = new DbInitializer(DbSettings);
+                initializer.EnsureCreated();
+                ConnectionFactory = new SqliteConnectionFactory(DbSettings);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"Nao foi possivel iniciar o TeamOps.\n\n{ex.Message}",
+                    "Falha de configuracao ou armazenamento",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+                return;
+            }
 
             var provisioning = new FirstRunProvisioningService(ConnectionFactory);
             if (provisioning.IsProvisioningRequired())

@@ -24,17 +24,23 @@ namespace TeamOps.OperatorApp
 
             ApplicationConfiguration.Initialize();
 
-            AttachmentsFolder = StoragePathResolver.GetRequiredPath("HikitsuguiAttachmentPath");
-
-            // Le o caminho do banco no app.config.
-            DbSettings = new DbSettings(portableMode: false);
-
-            // Garante que o banco existe
-            var initializer = new DbInitializer(DbSettings);
-            initializer.EnsureCreated();
-
-            // Cria a connection factory
-            ConnectionFactory = new SqliteConnectionFactory(DbSettings);
+            try
+            {
+                AttachmentsFolder = StoragePathResolver.GetRequiredPath("HikitsuguiAttachmentPath");
+                DbSettings = new DbSettings(portableMode: false);
+                var initializer = new DbInitializer(DbSettings);
+                initializer.EnsureCreated();
+                ConnectionFactory = new SqliteConnectionFactory(DbSettings);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"Nao foi possivel iniciar o TeamOps Operator.\n\n{ex.Message}",
+                    "Falha de configuracao ou armazenamento",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+                return;
+            }
 
             // Abre o app do operador
             Application.Run(new HTMLHikitsuguiOperatorRead());

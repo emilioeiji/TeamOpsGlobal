@@ -21,7 +21,16 @@ namespace TeamOps.Data.Db
         {
             var dbPath = _settings.DatabasePath;
             var dbDir = Path.GetDirectoryName(dbPath)!;
-            Directory.CreateDirectory(dbDir);
+            try
+            {
+                Directory.CreateDirectory(dbDir);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
+            {
+                throw new InvalidOperationException(
+                    $"Nao foi possivel acessar a pasta local do banco SQLite: {dbDir}. " +
+                    "Verifique o caminho e as permissoes de leitura e escrita.", ex);
+            }
 
             using var conn = new SqliteConnection(_settings.ConnectionString);
             conn.Open();

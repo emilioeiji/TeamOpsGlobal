@@ -25,7 +25,15 @@ namespace TeamOps.Config
                 throw new ArgumentException("O caminho do banco deve ser informado.", nameof(databasePath));
 
             PortableMode = portableMode;
-            DatabasePath = Path.GetFullPath(databasePath);
+            DatabasePath = StoragePathResolver.Resolve(
+                databasePath,
+                AppContext.BaseDirectory,
+                AppContext.BaseDirectory);
+
+            if (StoragePathResolver.IsUncPath(DatabasePath))
+                throw new InvalidOperationException(
+                    "DatabasePath nao pode apontar para UNC. O SQLite deve permanecer em disco local; " +
+                    "use StorageRoot para documentos e integracoes compartilhados.");
 
             ConnectionString = new SqliteConnectionStringBuilder
             {
@@ -36,6 +44,6 @@ namespace TeamOps.Config
             }.ToString();
         }
 
-        public override string ToString() => $"DB: {DatabasePath} | Portable: {PortableMode}";
+        public override string ToString() => $"DB local: {DatabasePath} | Portable: {PortableMode}";
     }
 }

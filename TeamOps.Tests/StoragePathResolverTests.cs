@@ -75,4 +75,22 @@ public sealed class StoragePathResolverTests
 
         Assert.Contains("sai da raiz de armazenamento", exception.Message);
     }
+
+    [Fact]
+    public void DatabaseSettingsRejectUncBecauseSqliteMustRemainLocal()
+    {
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            new DbSettings(@"\\servidor\compartilhamento\TeamOps\DB\teamops.db"));
+
+        Assert.Contains("SQLite deve permanecer em disco local", exception.Message);
+    }
+
+    [Fact]
+    public void DatabaseSettingsAcceptLocalAbsolutePath()
+    {
+        var settings = new DbSettings(@"C:\TeamOps\DB\teamops.db");
+
+        Assert.Equal(@"C:\TeamOps\DB\teamops.db", settings.DatabasePath);
+        Assert.Contains("Pooling=True", settings.ConnectionString, StringComparison.OrdinalIgnoreCase);
+    }
 }

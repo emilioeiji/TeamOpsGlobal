@@ -141,6 +141,9 @@ namespace TeamOps.Config
                 var path = definition.RelativeToStorageRoot
                     ? StoragePathResolver.Resolve(configured, storageRoot, AppContext.BaseDirectory)
                     : StoragePathResolver.Resolve(configured, AppContext.BaseDirectory, AppContext.BaseDirectory);
+                if (definition.Key == "DatabasePath" && StoragePathResolver.IsUncPath(path))
+                    return new(definition.Key, definition.Label, path,
+                        "Nao suportado: SQLite deve permanecer em disco local", false, true, definition.Type);
                 var exists = definition.Type == StoragePathType.Directory
                     ? Directory.Exists(path)
                     : File.Exists(path);

@@ -63,4 +63,30 @@ public sealed class CleanInstallationTests
             SELECT COUNT(*) FROM pragma_table_info('Users')
             WHERE name = 'AccessLevel';"));
     }
+
+    [Fact]
+    public void InaccessibleDatabaseDirectoryReturnsActionableMessage()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "TeamOps.Tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var blockingFile = Path.Combine(directory, "not-a-directory");
+        File.WriteAllText(blockingFile, "block");
+
+        try
+        {
+            var settings = new DbSettings(Path.Combine(blockingFile, "teamops.db"));
+
+            var error = Assert.Throws<InvalidOperationException>(() =>
+                new DbInitializer(settings).EnsureCreated());
+
+            Assert.Contains("pasta local do banco SQLite", error.Message);
+            Assert.Contains("permissoes de leitura e escrita", error.Message);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            if (Directory.Exists(directory))
+                Directory.Delete(directory, recursive: true);
+        }
+    }
 }
