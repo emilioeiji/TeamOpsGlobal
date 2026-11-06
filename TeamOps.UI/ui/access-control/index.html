@@ -50,6 +50,7 @@
                     </div>
 
                     <button id="btnHeaderNovo" type="button" class="btn-primary" data-i18n="newUser">Novo Usuario</button>
+                    <button id="btnPermissionMatrix" type="button" class="btn-secondary hidden" data-i18n="permissionMatrix">Matriz de Permissoes</button>
                 </div>
             </div>
 
@@ -163,6 +164,34 @@
             <div class="modal-actions">
                 <button id="btnCancelPasswordModal" type="button" class="btn-secondary" data-i18n="cancel">Cancelar</button>
                 <button id="btnSavePasswordModal" type="button" class="btn-primary" data-i18n="saveNewPassword">Salvar Nova Senha</button>
+            </div>
+        </section>
+    </div>
+
+    <div id="permissionModal" class="modal-shell hidden">
+        <div id="permissionModalBackdrop" class="modal-backdrop"></div>
+        <section class="modal-card modal-card-permissions">
+            <div class="modal-top">
+                <div class="title-stack">
+                    <h2 data-i18n="permissionMatrixTitle">Matriz de Permissoes</h2>
+                    <p data-i18n="permissionMatrixSubtitle">Defina as acoes permitidas para cada perfil. O acesso continua limitado aos setores do usuario.</p>
+                </div>
+                <button id="btnClosePermissionModal" type="button" class="icon-close" data-i18n-aria-label="closeModalAria" aria-label="Fechar modal">X</button>
+            </div>
+
+            <div class="permission-toolbar">
+                <div class="form-group">
+                    <label for="cmbPermissionProfile" data-i18n="permissionProfile">Perfil</label>
+                    <select id="cmbPermissionProfile" class="input"></select>
+                </div>
+                <p class="scope-note" data-i18n="permissionScopeNote">As permissoes funcionais abaixo são combinadas com a arvore e os setores atribuídos a cada usuário.</p>
+            </div>
+
+            <div id="permissionMatrixContainer" class="permission-matrix-container"></div>
+
+            <div class="modal-actions">
+                <button id="btnCancelPermissionModal" type="button" class="btn-secondary" data-i18n="cancel">Cancelar</button>
+                <button id="btnSavePermissionMatrix" type="button" class="btn-primary" data-i18n="savePermissionMatrix">Salvar Permissoes</button>
             </div>
         </section>
     </div>

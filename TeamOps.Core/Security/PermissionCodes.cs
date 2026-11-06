@@ -9,6 +9,11 @@ namespace TeamOps.Core.Security
         public const string Export = "export";
         public const string Approve = "approve";
         public const string Administer = "administer";
+
+        public static IReadOnlyList<string> All { get; } =
+        [
+            View, Create, Edit, Delete, Export, Approve, Administer
+        ];
     }
 
     public static class ModuleCodes
@@ -27,5 +32,12 @@ namespace TeamOps.Core.Security
         public const string Reports = "reports";
         public const string Organization = "organization";
         public const string AccessControl = "accesscontrol";
+
+        public static IReadOnlyList<string> All { get; } =
+        [
+            Dashboard, Hikitsugui, Haidai, Presence, Production, SobraDePeca,
+            PrCl, FollowUp, Tasks, MasterCard, PaidLeave, Reports,
+            Organization, AccessControl
+        ];
     }
 }

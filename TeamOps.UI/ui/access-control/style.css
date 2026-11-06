@@ -392,6 +392,10 @@ tbody tr:last-child td {
     width: min(640px, 100%);
 }
 
+.modal-card-permissions {
+    width: min(1240px, 100%);
+}
+
 .modal-top {
     display: flex;
     justify-content: space-between;
@@ -449,6 +453,70 @@ tbody tr:last-child td {
     font-weight: 800;
     letter-spacing: 0.05em;
     text-transform: uppercase;
+}
+
+.permission-toolbar {
+    display: grid;
+    grid-template-columns: minmax(240px, 360px) 1fr;
+    align-items: end;
+    gap: 18px;
+    margin-top: 20px;
+}
+
+.scope-note {
+    margin: 0 0 10px;
+    color: var(--color-muted);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.permission-matrix-container {
+    margin-top: 18px;
+    max-height: calc(100vh - 330px);
+    overflow: auto;
+    border: 1px solid var(--color-border);
+    border-radius: 14px;
+}
+
+.permission-table {
+    min-width: 940px;
+}
+
+.permission-table thead th,
+.permission-table tbody th {
+    position: sticky;
+    background: #eff4fa;
+    z-index: 2;
+}
+
+.permission-table thead th {
+    top: 0;
+}
+
+.permission-table thead th:first-child,
+.permission-table tbody th {
+    left: 0;
+}
+
+.permission-table tbody th {
+    padding: 13px 14px;
+    color: #315065;
+    font-size: 13px;
+    text-align: left;
+    border-bottom: 1px solid #ebf0f5;
+    white-space: nowrap;
+}
+
+.permission-table td {
+    min-width: 92px;
+    text-align: center;
+}
+
+.permission-check {
+    width: 20px;
+    height: 20px;
+    accent-color: var(--color-primary);
+    cursor: pointer;
 }
 
 .modal-actions {
@@ -516,5 +584,9 @@ tbody tr:last-child td {
     .btn-primary,
     .btn-secondary {
         width: 100%;
+    }
+
+    .permission-toolbar {
+        grid-template-columns: 1fr;
     }
 }

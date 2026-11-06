@@ -6,6 +6,10 @@ let rows = [];
 let profiles = [];
 let organizationNodes = [];
 let sectors = [];
+let permissionProfiles = [];
+let permissionModules = [];
+let permissionActions = [];
+let permissionRows = [];
 let currentModalMode = "create";
 let editingLogin = "";
 let passwordTargetLogin = "";
@@ -25,6 +29,14 @@ const I18N = {
         searchLabel: "Buscar",
         searchPlaceholder: "Digite o login, nome, FJ ou nivel...",
         newUser: "Novo Usuario",
+        permissionMatrix: "Matriz de Permissoes",
+        permissionMatrixTitle: "Matriz de Permissoes",
+        permissionMatrixSubtitle: "Defina as acoes permitidas para cada perfil. O acesso continua limitado aos setores do usuario.",
+        permissionProfile: "Perfil",
+        permissionScopeNote: "As permissoes funcionais abaixo sao combinadas com a arvore e os setores atribuidos a cada usuario.",
+        savePermissionMatrix: "Salvar Permissoes",
+        permissionSavedFallback: "Matriz de permissoes atualizada.",
+        moduleColumn: "Modulo",
         loading: "Carregando...",
         empty: "Nenhum usuario encontrado.",
         thLogin: "Login",
@@ -77,6 +89,14 @@ const I18N = {
         searchLabel: "\u691c\u7d22",
         searchPlaceholder: "\u30ed\u30b0\u30a4\u30f3\u3001\u540d\u524d\u3001FJ\u3001\u6a29\u9650\u3067\u691c\u7d22...",
         newUser: "\u65b0\u898f\u30e6\u30fc\u30b6\u30fc",
+        permissionMatrix: "\u6a29\u9650\u30de\u30c8\u30ea\u30af\u30b9",
+        permissionMatrixTitle: "\u6a29\u9650\u30de\u30c8\u30ea\u30af\u30b9",
+        permissionMatrixSubtitle: "\u30d7\u30ed\u30d5\u30a1\u30a4\u30eb\u3054\u3068\u306b\u8a31\u53ef\u3059\u308b\u64cd\u4f5c\u3092\u8a2d\u5b9a\u3057\u307e\u3059\u3002\u30e6\u30fc\u30b6\u30fc\u306e\u30bb\u30af\u30bf\u30fc\u7bc4\u56f2\u306f\u5f15\u304d\u7d9a\u304d\u9069\u7528\u3055\u308c\u307e\u3059\u3002",
+        permissionProfile: "\u30d7\u30ed\u30d5\u30a1\u30a4\u30eb",
+        permissionScopeNote: "\u6a5f\u80fd\u6a29\u9650\u306f\u3001\u5404\u30e6\u30fc\u30b6\u30fc\u306e\u7d44\u7e54\u30c4\u30ea\u30fc\u3068\u5272\u308a\u5f53\u3066\u30bb\u30af\u30bf\u30fc\u3068\u7d44\u307f\u5408\u308f\u305b\u3066\u9069\u7528\u3055\u308c\u307e\u3059\u3002",
+        savePermissionMatrix: "\u6a29\u9650\u3092\u4fdd\u5b58",
+        permissionSavedFallback: "\u6a29\u9650\u30de\u30c8\u30ea\u30af\u30b9\u3092\u66f4\u65b0\u3057\u307e\u3057\u305f\u3002",
+        moduleColumn: "\u30e2\u30b8\u30e5\u30fc\u30eb",
         loading: "\u8aad\u307f\u8fbc\u307f\u4e2d...",
         empty: "\u30e6\u30fc\u30b6\u30fc\u304c\u3042\u308a\u307e\u305b\u3093\u3002",
         thLogin: "\u30ed\u30b0\u30a4\u30f3",
@@ -117,6 +137,26 @@ const I18N = {
     }
 };
 
+const MODULE_LABELS = {
+    "pt-BR": {
+        dashboard: "Painel", hikitsugui: "Hikitsugui", haidai: "Haidai", presence: "Presenca",
+        production: "Producao", sobradepeca: "Sobra de Peca", prcl: "PR/CL", followup: "Follow-up",
+        tasks: "Tarefas", mastercard: "Master Card", paidleave: "Yukyu", reports: "Relatorios",
+        organization: "Organizacao", accesscontrol: "Controle de Acesso"
+    },
+    "ja-JP": {
+        dashboard: "\u30c0\u30c3\u30b7\u30e5\u30dc\u30fc\u30c9", hikitsugui: "Hikitsugui", haidai: "Haidai", presence: "\u5728\u5e2d",
+        production: "\u751f\u7523", sobradepeca: "\u4f59\u5269\u54c1", prcl: "PR/CL", followup: "\u30d5\u30a9\u30ed\u30fc\u30a2\u30c3\u30d7",
+        tasks: "\u30bf\u30b9\u30af", mastercard: "\u30de\u30b9\u30bf\u30fc\u30ab\u30fc\u30c9", paidleave: "\u6709\u4f11", reports: "\u30ec\u30dd\u30fc\u30c8",
+        organization: "\u7d44\u7e54", accesscontrol: "\u30a2\u30af\u30bb\u30b9\u7ba1\u7406"
+    }
+};
+
+const ACTION_LABELS = {
+    "pt-BR": { view: "Ver", create: "Criar", edit: "Editar", delete: "Excluir", export: "Exportar", approve: "Aprovar", administer: "Administrar" },
+    "ja-JP": { view: "\u8868\u793a", create: "\u4f5c\u6210", edit: "\u7de8\u96c6", delete: "\u524a\u9664", export: "\u51fa\u529b", approve: "\u627f\u8a8d", administer: "\u7ba1\u7406" }
+};
+
 window.addEventListener("DOMContentLoaded", () => {
     bindEvents();
     send("load");
@@ -126,6 +166,12 @@ function bindEvents() {
     document.getElementById("searchInput").addEventListener("input", applyFilters);
     document.getElementById("btnHeaderNovo").addEventListener("click", openCreateModal);
     document.getElementById("cmbProfile").addEventListener("change", syncScopeMode);
+    document.getElementById("btnPermissionMatrix").addEventListener("click", openPermissionModal);
+    document.getElementById("cmbPermissionProfile").addEventListener("change", renderPermissionMatrix);
+    document.getElementById("btnClosePermissionModal").addEventListener("click", closePermissionModal);
+    document.getElementById("btnCancelPermissionModal").addEventListener("click", closePermissionModal);
+    document.getElementById("permissionModalBackdrop").addEventListener("click", closePermissionModal);
+    document.getElementById("btnSavePermissionMatrix").addEventListener("click", savePermissionMatrix);
 
     document.getElementById("btnCloseUserModal").addEventListener("click", closeUserModal);
     document.getElementById("btnCancelUserModal").addEventListener("click", closeUserModal);
@@ -154,10 +200,15 @@ window.chrome.webview.addEventListener("message", event => {
             hydrateScreen(msg);
             break;
         case "rows":
+            hydratePermissions(msg);
             rows = normalizeRows(msg.rows || msg.data || []);
             renderMetrics(rows);
             applyFilters();
             syncEditingUser();
+            break;
+        case "permissions_saved":
+            alert(msg.message || t("permissionSavedFallback"));
+            closePermissionModal();
             break;
         case "created":
             alert(msg.message || t("createdFallback"));
@@ -182,6 +233,7 @@ function hydrateScreen(payload) {
     organizationNodes = payload.organizationNodes || [];
     sectors = payload.sectors || [];
     rows = normalizeRows(payload.rows || []);
+    hydratePermissions(payload);
 
     fillSelect("cmbProfile", profiles.map(item => ({ ...item, label: state.locale === "ja-JP" ? item.nameJp : item.namePt })), "code", "label");
     fillSelect("cmbReferenceNode", organizationNodes.map(item => ({ ...item, label: `${item.code} - ${state.locale === "ja-JP" ? item.nameJp : item.namePt}` })), "id", "label");
@@ -189,6 +241,70 @@ function hydrateScreen(payload) {
     renderMetrics(rows);
     resetUserForm();
     applyFilters();
+}
+
+function hydratePermissions(payload) {
+    permissionProfiles = payload.permissionProfiles || permissionProfiles;
+    permissionModules = payload.permissionModules || permissionModules;
+    permissionActions = payload.permissionActions || permissionActions;
+    permissionRows = payload.permissionRows || permissionRows;
+    document.getElementById("btnPermissionMatrix").classList.toggle("hidden", payload.canManagePermissionMatrix !== true);
+
+    const selectedProfile = document.getElementById("cmbPermissionProfile").value;
+    fillSelect("cmbPermissionProfile", permissionProfiles.map(item => ({
+        ...item,
+        label: `${item.code} - ${state.locale === "ja-JP" ? item.nameJp : item.namePt}`
+    })), "code", "label");
+    if (permissionProfiles.some(item => item.code === selectedProfile)) {
+        document.getElementById("cmbPermissionProfile").value = selectedProfile;
+    }
+    renderPermissionMatrix();
+}
+
+function openPermissionModal() {
+    if (!permissionProfiles.length) return;
+    if (!document.getElementById("cmbPermissionProfile").value) {
+        document.getElementById("cmbPermissionProfile").value = permissionProfiles[0].code;
+    }
+    renderPermissionMatrix();
+    document.getElementById("permissionModal").classList.remove("hidden");
+}
+
+function closePermissionModal() {
+    document.getElementById("permissionModal").classList.add("hidden");
+}
+
+function renderPermissionMatrix() {
+    const container = document.getElementById("permissionMatrixContainer");
+    const profileCode = document.getElementById("cmbPermissionProfile").value;
+    if (!profileCode || !permissionModules.length) {
+        container.innerHTML = "";
+        return;
+    }
+
+    const allowed = new Set(permissionRows
+        .filter(item => item.profileCode === profileCode && item.isAllowed)
+        .map(item => `${item.moduleCode}:${item.actionCode}`));
+    const headers = permissionActions.map(action => `<th>${escapeHtml(ACTION_LABELS[state.locale]?.[action] || action)}</th>`).join("");
+    const body = permissionModules.map(moduleCode => {
+        const cells = permissionActions.map(actionCode => {
+            const key = `${moduleCode}:${actionCode}`;
+            return `<td><input class="permission-check" type="checkbox" data-module="${escapeHtmlAttr(moduleCode)}" data-action="${escapeHtmlAttr(actionCode)}" ${allowed.has(key) ? "checked" : ""}></td>`;
+        }).join("");
+        return `<tr><th>${escapeHtml(MODULE_LABELS[state.locale]?.[moduleCode] || moduleCode)}</th>${cells}</tr>`;
+    }).join("");
+
+    container.innerHTML = `<table class="permission-table"><thead><tr><th>${escapeHtml(t("moduleColumn"))}</th>${headers}</tr></thead><tbody>${body}</tbody></table>`;
+}
+
+function savePermissionMatrix() {
+    const profileCode = document.getElementById("cmbPermissionProfile").value;
+    const permissions = Array.from(document.querySelectorAll(".permission-check:checked")).map(item => ({
+        moduleCode: item.dataset.module,
+        actionCode: item.dataset.action,
+        isAllowed: true
+    }));
+    send("save_permissions", { profileCode, permissions });
 }
 
 function setLocale(locale) {

@@ -95,6 +95,7 @@
         public int referenceNodeId { get; set; }
         public List<int> sectorIds { get; set; } = new();
         public bool isActive { get; set; } = true;
+        public List<ModulePermissionDto> permissions { get; set; } = new();
 
         // ============================
         // TASKS
@@ -116,6 +117,13 @@
     {
         public string fileName { get; set; } = string.Empty;
         public string base64 { get; set; } = string.Empty;
+    }
+
+    public class ModulePermissionDto
+    {
+        public string moduleCode { get; set; } = string.Empty;
+        public string actionCode { get; set; } = string.Empty;
+        public bool isAllowed { get; set; }
     }
 
     public class AttachmentExistingDto

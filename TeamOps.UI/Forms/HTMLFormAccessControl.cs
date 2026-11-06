@@ -1,5 +1,6 @@
 using Microsoft.Web.WebView2.Core;
 using System.Text.Json;
+using TeamOps.Core.Security;
 using TeamOps.Data.Security;
 using TeamOps.UI.Forms.Models;
 
@@ -8,6 +9,7 @@ namespace TeamOps.UI.Forms
     public partial class HTMLFormAccessControl : Form
     {
         private readonly UserAdministrationService _administration;
+        private readonly PermissionMatrixAdministrationService _permissionMatrix;
 
         public HTMLFormAccessControl()
         {
@@ -15,6 +17,7 @@ namespace TeamOps.UI.Forms
             Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
             Text = L("Controle de acesso", "アクセス管理");
             _administration = new UserAdministrationService(Program.ConnectionFactory);
+            _permissionMatrix = new PermissionMatrixAdministrationService(Program.ConnectionFactory);
             _administration.GetPayload(CurrentUserId);
             InitializeWebView();
         }
@@ -47,6 +50,7 @@ namespace TeamOps.UI.Forms
                     case "create": CreateUser(msg); break;
                     case "update": UpdateUser(msg); break;
                     case "reset_password": ResetPassword(msg); break;
+                    case "save_permissions": SavePermissions(msg); break;
                 }
             }
             catch (Exception ex)
@@ -79,9 +83,28 @@ namespace TeamOps.UI.Forms
             PostJson(new { type = "password_reset", message = L("Senha redefinida com sucesso.", "パスワードを再設定しました。") });
         }
 
+        private void SavePermissions(JsRequest msg)
+        {
+            _permissionMatrix.SaveProfilePermissions(
+                CurrentUserId,
+                msg.profileCode,
+                (msg.permissions ?? []).Select(item => new ModulePermissionSelection(
+                    item.moduleCode, item.actionCode, item.isAllowed)).ToArray());
+            PostJson(new
+            {
+                type = "permissions_saved",
+                message = L("Matriz de permissoes atualizada.", "権限マトリクスを更新しました。")
+            });
+            SendPayload("rows");
+        }
+
         private void SendPayload(string type)
         {
             var payload = _administration.GetPayload(CurrentUserId);
+            var canManagePermissionMatrix = Program.CurrentSession?.Access.HierarchyRank == 6;
+            var permissionPayload = canManagePermissionMatrix
+                ? _permissionMatrix.GetPayload(CurrentUserId)
+                : null;
             PostJson(new
             {
                 type,
@@ -89,6 +112,23 @@ namespace TeamOps.UI.Forms
                 profiles = payload.Profiles.Select(item => new { code = item.Code, namePt = item.NamePt, nameJp = item.NameJp, rank = item.HierarchyRank, scopeMode = item.ScopeMode }),
                 organizationNodes = payload.OrganizationNodes.Select(item => new { id = item.Id, parentId = item.ParentId, nodeType = item.NodeType, code = item.Code, namePt = item.NamePt, nameJp = item.NameJp }),
                 sectors = payload.Sectors.Select(item => new { id = item.Id, organizationNodeId = item.OrganizationNodeId, code = item.Code, namePt = item.NamePt, nameJp = item.NameJp }),
+                canManagePermissionMatrix,
+                permissionModules = ModuleCodes.All,
+                permissionActions = PermissionActions.All,
+                permissionProfiles = permissionPayload?.Profiles.Select(item => new
+                {
+                    code = item.Code,
+                    namePt = item.NamePt,
+                    nameJp = item.NameJp,
+                    rank = item.HierarchyRank
+                }) ?? [],
+                permissionRows = permissionPayload?.Permissions.Select(item => new
+                {
+                    profileCode = item.ProfileCode,
+                    moduleCode = item.ModuleCode,
+                    actionCode = item.ActionCode,
+                    isAllowed = item.IsAllowed
+                }) ?? [],
                 rows = payload.Users.Select(item => new
                 {
                     id = item.Id, login = item.Login, codigoFJ = item.CodigoFJ, name = item.Name,
