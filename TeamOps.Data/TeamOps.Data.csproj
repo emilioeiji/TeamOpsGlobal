@@ -22,6 +22,7 @@
     <EmbeddedResource Include="Migrations\V2_0006_PaidLeavePermission.sql" />
     <EmbeddedResource Include="Migrations\V2_0007_FeatureModules.sql" />
     <EmbeddedResource Include="Migrations\V2_0008_ProductionMonitor.sql" />
+    <EmbeddedResource Include="Migrations\V2_0009_HaidaiSectorTopology.sql" />
   </ItemGroup>
 
   <ItemGroup>

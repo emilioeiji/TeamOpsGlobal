@@ -170,12 +170,9 @@ namespace TeamOps.UI.Forms
                     : authorizedSectorIds.FirstOrDefault());
             var init = _service.GetInitialPayload(_currentOperator.ShiftId, defaultSectorId);
             var sharedTopologyEnabled = init.SharedSectorTopology.IsEnabled
-                && init.SharedSectorTopology.GBareruSectorId.HasValue
-                && init.SharedSectorTopology.DadSectorId.HasValue
-                && init.SharedSectorTopology.GdadSectorId.HasValue
-                && authorizedSectorIds.Contains(init.SharedSectorTopology.GBareruSectorId.Value)
-                && authorizedSectorIds.Contains(init.SharedSectorTopology.DadSectorId.Value)
-                && authorizedSectorIds.Contains(init.SharedSectorTopology.GdadSectorId.Value);
+                && init.SharedSectorTopology.SharedSectorId.HasValue
+                && authorizedSectorIds.Contains(init.SharedSectorTopology.SharedSectorId.Value)
+                && init.SharedSectorTopology.MemberSectorIds.All(authorizedSectorIds.Contains);
 
             PostJson(new
             {
@@ -188,9 +185,8 @@ namespace TeamOps.UI.Forms
                     sharedSectorTopology = new
                     {
                         isEnabled = sharedTopologyEnabled,
-                        gBareruSectorId = init.SharedSectorTopology.GBareruSectorId,
-                        dadSectorId = init.SharedSectorTopology.DadSectorId,
-                        gdadSectorId = init.SharedSectorTopology.GdadSectorId
+                        sharedSectorId = init.SharedSectorTopology.SharedSectorId,
+                        memberSectorIds = init.SharedSectorTopology.MemberSectorIds
                     },
                     defaults = new
                     {

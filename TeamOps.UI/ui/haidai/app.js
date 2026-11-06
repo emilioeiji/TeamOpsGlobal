@@ -8,9 +8,8 @@ const state = {
     operators: [],
     sharedSectorTopology: {
         isEnabled: false,
-        gBareruSectorId: 0,
-        dadSectorId: 0,
-        gdadSectorId: 0
+        sharedSectorId: 0,
+        memberSectorIds: []
     },
     monthPlan: null,
     board: null,
@@ -204,9 +203,8 @@ function hydrateInit(data) {
     state.operators = data.operators || [];
     state.sharedSectorTopology = {
         isEnabled: data.sharedSectorTopology?.isEnabled === true,
-        gBareruSectorId: Number(data.sharedSectorTopology?.gBareruSectorId || 0),
-        dadSectorId: Number(data.sharedSectorTopology?.dadSectorId || 0),
-        gdadSectorId: Number(data.sharedSectorTopology?.gdadSectorId || 0)
+        sharedSectorId: Number(data.sharedSectorTopology?.sharedSectorId || 0),
+        memberSectorIds: (data.sharedSectorTopology?.memberSectorIds || []).map(Number)
     };
 
     document.getElementById("lblUser").textContent = state.currentUser;
@@ -1216,8 +1214,7 @@ function isSharedSupportSector(sectorId) {
     }
 
     const normalizedSectorId = Number(sectorId);
-    return normalizedSectorId === state.sharedSectorTopology.gBareruSectorId
-        || normalizedSectorId === state.sharedSectorTopology.dadSectorId;
+    return state.sharedSectorTopology.memberSectorIds.includes(normalizedSectorId);
 }
 
 function isOperatorVisibleInSector(operator, sectorId) {
@@ -1225,19 +1222,16 @@ function isOperatorVisibleInSector(operator, sectorId) {
     const operatorSectorId = Number(operator?.sectorId || 0);
     return operatorSectorId === normalizedSectorId
         || (isSharedSupportSector(normalizedSectorId)
-            && operatorSectorId === state.sharedSectorTopology.gdadSectorId);
+            && operatorSectorId === state.sharedSectorTopology.sharedSectorId);
 }
 
 function getAllowedLocalSectorIdsForOperator(operatorCodigoFJ, sectorId) {
     const normalizedSectorId = Number(sectorId);
     const operatorMeta = findOperatorMeta(operatorCodigoFJ);
     if (state.sharedSectorTopology.isEnabled
-        && (Number(operatorMeta?.sectorId || 0) === state.sharedSectorTopology.gdadSectorId
-            || normalizedSectorId === state.sharedSectorTopology.gdadSectorId)) {
-        return [
-            state.sharedSectorTopology.gBareruSectorId,
-            state.sharedSectorTopology.dadSectorId
-        ];
+        && (Number(operatorMeta?.sectorId || 0) === state.sharedSectorTopology.sharedSectorId
+            || normalizedSectorId === state.sharedSectorTopology.sharedSectorId)) {
+        return [...state.sharedSectorTopology.memberSectorIds];
     }
 
     return [normalizedSectorId];

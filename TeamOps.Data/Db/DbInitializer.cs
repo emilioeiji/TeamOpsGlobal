@@ -85,7 +85,8 @@ namespace TeamOps.Data.Db
             new(5, "Tasks sector scope", "TeamOps.Data.Migrations.V2_0005_TasksSectorScope.sql"),
             new(6, "Paid leave permission", "TeamOps.Data.Migrations.V2_0006_PaidLeavePermission.sql"),
             new(7, "Feature module schemas", "TeamOps.Data.Migrations.V2_0007_FeatureModules.sql"),
-            new(8, "Production monitor schema", "TeamOps.Data.Migrations.V2_0008_ProductionMonitor.sql")
+            new(8, "Production monitor schema", "TeamOps.Data.Migrations.V2_0008_ProductionMonitor.sql"),
+            new(9, "Haidai sector topology", "TeamOps.Data.Migrations.V2_0009_HaidaiSectorTopology.sql")
         ];
 
         private static void DemandCleanOrVersionedDatabase(SqliteConnection conn)

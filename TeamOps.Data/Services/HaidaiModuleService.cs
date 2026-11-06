@@ -13,9 +13,6 @@ namespace TeamOps.UI.Services
 {
     public sealed class HaidaiModuleService
     {
-        private const string GBareruSectorCode = "G-BARERU";
-        private const string DadSectorCode = "DAD";
-        private const string GdadSectorCode = "GDAD";
         private const int TvExportPageSize = 20;
 
         private readonly SqliteConnectionFactory _factory;
@@ -101,9 +98,8 @@ namespace TeamOps.UI.Services
                 locals,
                 operators,
                 new HaidaiSharedSectorTopology(
-                    _sectorTopology.GBareru?.Id,
-                    _sectorTopology.Dad?.Id,
-                    _sectorTopology.Gdad?.Id));
+                    _sectorTopology.SharedSector?.Id,
+                    _sectorTopology.MemberSectors.Select(item => item.Id).ToArray()));
         }
 
         public HaidaiMonthlyPlanPayload GetMonthlyPlan(
@@ -120,7 +116,7 @@ namespace TeamOps.UI.Services
             var firstDay = new DateTime(year, month, 1);
             var lastDay = firstDay.AddMonths(1).AddDays(-1);
             var dayNumbers = Enumerable.Range(1, lastDay.Day).ToList();
-            var includeSharedGdad = CanUseSharedGdad(authorizedSectorIds) && SupportsSharedGdad(sectorId);
+            var includeSharedGroup = CanUseSharedGroup(authorizedSectorIds) && SupportsSharedGroup(sectorId);
 
             var operators = conn.Query<HaidaiOperatorRow>(
                 @"
@@ -142,7 +138,7 @@ namespace TeamOps.UI.Services
                       AND o.ShiftId = @ShiftId
                       AND (
                             o.SectorId = @SectorId
-                         OR (@IncludeSharedGdad = 1 AND o.SectorId = @GdadSectorId)
+                         OR (@IncludeSharedGroup = 1 AND o.SectorId = @SharedSectorId)
                       )
                     ORDER BY o.GroupId,
                              CASE WHEN COALESCE(o.IsLeader, 0) = 1 THEN 1 ELSE 0 END,
@@ -152,8 +148,8 @@ namespace TeamOps.UI.Services
                 {
                     SectorId = sectorId,
                     ShiftId = shiftId,
-                    IncludeSharedGdad = includeSharedGdad ? 1 : 0,
-                    GdadSectorId = _sectorTopology.Gdad?.Id ?? -1
+                    IncludeSharedGroup = includeSharedGroup ? 1 : 0,
+                    SharedSectorId = _sectorTopology.SharedSector?.Id ?? -1
                 })
                 .ToList();
 
@@ -326,11 +322,11 @@ namespace TeamOps.UI.Services
                     transaction)
                     .ToDictionary(item => item.CodigoFJ, item => item.SectorId, StringComparer.OrdinalIgnoreCase);
 
-            var canUseSharedGdad = CanUseSharedGdad(authorizedSectorIds);
-            var localSectorIds = canUseSharedGdad
-                && (SupportsSharedGdad(request.SectorId)
-                    || (_sectorTopology.Gdad != null && request.SectorId == _sectorTopology.Gdad.Id))
-                ? new[] { _sectorTopology.GBareru!.Id, _sectorTopology.Dad!.Id }
+            var canUseSharedGroup = CanUseSharedGroup(authorizedSectorIds);
+            var localSectorIds = canUseSharedGroup
+                && (SupportsSharedGroup(request.SectorId)
+                    || (_sectorTopology.SharedSector != null && request.SectorId == _sectorTopology.SharedSector.Id))
+                ? _sectorTopology.MemberSectors.Select(item => item.Id).ToArray()
                 : new[] { request.SectorId };
 
             var locals = conn.Query<HaidaiLocalLookup>(
@@ -569,21 +565,20 @@ namespace TeamOps.UI.Services
                 || string.Equals(value, "-", StringComparison.OrdinalIgnoreCase);
         }
 
-        private bool SupportsSharedGdad(int sectorId)
+        private bool SupportsSharedGroup(int sectorId)
         {
-            return _sectorTopology.SupportsSharedGdad
-                && (sectorId == _sectorTopology.GBareru!.Id || sectorId == _sectorTopology.Dad!.Id);
+            return _sectorTopology.IsEnabled
+                && _sectorTopology.MemberSectors.Any(item => item.Id == sectorId);
         }
 
-        private bool CanUseSharedGdad(IReadOnlyCollection<int>? authorizedSectorIds)
+        private bool CanUseSharedGroup(IReadOnlyCollection<int>? authorizedSectorIds)
         {
-            if (!_sectorTopology.SupportsSharedGdad)
+            if (!_sectorTopology.IsEnabled)
                 return false;
 
             return authorizedSectorIds == null
-                || (authorizedSectorIds.Contains(_sectorTopology.GBareru!.Id)
-                    && authorizedSectorIds.Contains(_sectorTopology.Dad!.Id)
-                    && authorizedSectorIds.Contains(_sectorTopology.Gdad!.Id));
+                || (authorizedSectorIds.Contains(_sectorTopology.SharedSector!.Id)
+                    && _sectorTopology.MemberSectors.All(item => authorizedSectorIds.Contains(item.Id)));
         }
 
         private bool IsOperatorAllowedInView(
@@ -595,24 +590,24 @@ namespace TeamOps.UI.Services
                 return false;
 
             return operatorHomeSectorId == requestedSectorId
-                || (CanUseSharedGdad(authorizedSectorIds)
-                    && SupportsSharedGdad(requestedSectorId)
-                    && operatorHomeSectorId == _sectorTopology.Gdad!.Id);
+                || (CanUseSharedGroup(authorizedSectorIds)
+                    && SupportsSharedGroup(requestedSectorId)
+                    && operatorHomeSectorId == _sectorTopology.SharedSector!.Id);
         }
 
         private int ResolveStorageSectorId(int requestedSectorId, int operatorHomeSectorId)
         {
-            return _sectorTopology.Gdad != null && operatorHomeSectorId == _sectorTopology.Gdad.Id
-                ? _sectorTopology.Gdad.Id
+            return _sectorTopology.SharedSector != null && operatorHomeSectorId == _sectorTopology.SharedSector.Id
+                ? _sectorTopology.SharedSector.Id
                 : requestedSectorId;
         }
 
         private int[] GetSelectableLocalSectorIds(int requestedSectorId, int operatorHomeSectorId)
         {
-            if (_sectorTopology.SupportsSharedGdad
-                && (operatorHomeSectorId == _sectorTopology.Gdad!.Id || requestedSectorId == _sectorTopology.Gdad.Id))
+            if (_sectorTopology.IsEnabled
+                && (operatorHomeSectorId == _sectorTopology.SharedSector!.Id || requestedSectorId == _sectorTopology.SharedSector.Id))
             {
-                return new[] { _sectorTopology.GBareru!.Id, _sectorTopology.Dad!.Id };
+                return _sectorTopology.MemberSectors.Select(item => item.Id).ToArray();
             }
 
             return new[] { requestedSectorId };
@@ -628,19 +623,16 @@ namespace TeamOps.UI.Services
                 return null;
             }
 
-            if (!_sectorTopology.SupportsSharedGdad
-                || operatorHomeSectorId != _sectorTopology.Gdad!.Id
-                || !SupportsSharedGdad(viewingSectorId)
+            if (!_sectorTopology.IsEnabled
+                || operatorHomeSectorId != _sectorTopology.SharedSector!.Id
+                || !SupportsSharedGroup(viewingSectorId)
                 || actualLocal.SectorId == viewingSectorId)
             {
                 return actualLocal;
             }
 
-            var remoteSector = actualLocal.SectorId == _sectorTopology.GBareru!.Id
-                ? _sectorTopology.GBareru
-                : actualLocal.SectorId == _sectorTopology.Dad!.Id
-                    ? _sectorTopology.Dad
-                    : null;
+            var remoteSector = _sectorTopology.MemberSectors
+                .FirstOrDefault(item => item.Id == actualLocal.SectorId);
 
             return remoteSector == null
                 ? actualLocal
@@ -655,34 +647,40 @@ namespace TeamOps.UI.Services
 
         private static HaidaiSectorTopology LoadSectorTopology(System.Data.IDbConnection conn)
         {
-            var sectors = conn.Query<HaidaiSectorReference>(
+            var rows = conn.Query<HaidaiSectorTopologyRow>(
                 @"
                     SELECT
-                        Id,
-                        COALESCE(Code, '') AS Code,
-                        COALESCE(NULLIF(NamePt, ''), NULLIF(NameJp, ''), Code, 'Setor ' || Id) AS Name
-                    FROM Sectors
-                    WHERE COALESCE(IsActive, 1) = 1;")
+                        shared.Id AS SharedSectorId,
+                        COALESCE(shared.Code, '') AS SharedSectorCode,
+                        COALESCE(NULLIF(shared.NamePt, ''), NULLIF(shared.NameJp, ''), shared.Code, 'Setor ' || shared.Id) AS SharedSectorName,
+                        member.Id AS MemberSectorId,
+                        COALESCE(member.Code, '') AS MemberSectorCode,
+                        COALESCE(NULLIF(member.NamePt, ''), NULLIF(member.NameJp, ''), member.Code, 'Setor ' || member.Id) AS MemberSectorName
+                    FROM HaidaiSharedSectorGroups groups
+                    JOIN Sectors shared ON shared.Id = groups.SharedSectorId AND shared.IsActive = 1
+                    JOIN HaidaiSharedSectorMembers links ON links.GroupId = groups.Id
+                    JOIN Sectors member ON member.Id = links.MemberSectorId AND member.IsActive = 1
+                    WHERE groups.IsActive = 1
+                    ORDER BY links.SortOrder, member.Id;")
                 .ToList();
 
-            HaidaiSectorReference? Find(string code)
-            {
-                var normalizedCode = NormalizeSectorCode(code);
-                return sectors.FirstOrDefault(item => NormalizeSectorCode(item.Code) == normalizedCode);
-            }
+            if (rows.Count == 0)
+                return HaidaiSectorTopology.Empty;
 
             return new HaidaiSectorTopology(
-                Find(GBareruSectorCode),
-                Find(DadSectorCode),
-                Find(GdadSectorCode));
-        }
-
-        private static string NormalizeSectorCode(string? value)
-        {
-            return new string((value ?? string.Empty)
-                .Where(char.IsLetterOrDigit)
-                .Select(char.ToUpperInvariant)
-                .ToArray());
+                new HaidaiSectorReference
+                {
+                    Id = rows[0].SharedSectorId,
+                    Code = rows[0].SharedSectorCode,
+                    Name = rows[0].SharedSectorName
+                },
+                rows.Select(item => new HaidaiSectorReference
+                    {
+                        Id = item.MemberSectorId,
+                        Code = item.MemberSectorCode,
+                        Name = item.MemberSectorName
+                    })
+                    .ToArray());
         }
 
         private static int ResolveOperatorHomeSectorId(
@@ -713,7 +711,7 @@ namespace TeamOps.UI.Services
             RefreshSectorTopology();
 
             using var conn = _factory.CreateOpenConnection();
-            var includeSharedGdad = CanUseSharedGdad(authorizedSectorIds) && SupportsSharedGdad(sectorId);
+            var includeSharedGroup = CanUseSharedGroup(authorizedSectorIds) && SupportsSharedGroup(sectorId);
 
             var allLocals = conn.Query<HaidaiLocalLookup>(
                 @"
@@ -749,7 +747,7 @@ namespace TeamOps.UI.Services
                       AND o.ShiftId = @ShiftId
                       AND (
                             o.SectorId = @SectorId
-                         OR (@IncludeSharedGdad = 1 AND o.SectorId = @GdadSectorId)
+                         OR (@IncludeSharedGroup = 1 AND o.SectorId = @SharedSectorId)
                       )
                     ORDER BY o.GroupId,
                              CASE WHEN COALESCE(o.IsLeader, 0) = 1 THEN 1 ELSE 0 END,
@@ -759,8 +757,8 @@ namespace TeamOps.UI.Services
                 {
                     SectorId = sectorId,
                     ShiftId = shiftId,
-                    IncludeSharedGdad = includeSharedGdad ? 1 : 0,
-                    GdadSectorId = _sectorTopology.Gdad?.Id ?? -1
+                    IncludeSharedGroup = includeSharedGroup ? 1 : 0,
+                    SharedSectorId = _sectorTopology.SharedSector?.Id ?? -1
                 })
                 .ToList();
 
@@ -3833,14 +3831,23 @@ namespace TeamOps.UI.Services
             public string Name { get; set; } = string.Empty;
         }
 
-        private sealed record HaidaiSectorTopology(
-            HaidaiSectorReference? GBareru,
-            HaidaiSectorReference? Dad,
-            HaidaiSectorReference? Gdad)
+        private sealed class HaidaiSectorTopologyRow
         {
-            public static HaidaiSectorTopology Empty { get; } = new(null, null, null);
+            public int SharedSectorId { get; set; }
+            public string SharedSectorCode { get; set; } = string.Empty;
+            public string SharedSectorName { get; set; } = string.Empty;
+            public int MemberSectorId { get; set; }
+            public string MemberSectorCode { get; set; } = string.Empty;
+            public string MemberSectorName { get; set; } = string.Empty;
+        }
 
-            public bool SupportsSharedGdad => GBareru != null && Dad != null && Gdad != null;
+        private sealed record HaidaiSectorTopology(
+            HaidaiSectorReference? SharedSector,
+            IReadOnlyList<HaidaiSectorReference> MemberSectors)
+        {
+            public static HaidaiSectorTopology Empty { get; } = new(null, []);
+
+            public bool IsEnabled => SharedSector != null && MemberSectors.Count > 0;
         }
     }
 
@@ -3855,11 +3862,10 @@ namespace TeamOps.UI.Services
         HaidaiSharedSectorTopology SharedSectorTopology);
 
     public sealed record HaidaiSharedSectorTopology(
-        int? GBareruSectorId,
-        int? DadSectorId,
-        int? GdadSectorId)
+        int? SharedSectorId,
+        IReadOnlyList<int> MemberSectorIds)
     {
-        public bool IsEnabled => GBareruSectorId.HasValue && DadSectorId.HasValue && GdadSectorId.HasValue;
+        public bool IsEnabled => SharedSectorId.HasValue && MemberSectorIds.Count > 0;
     }
 
     public sealed class HaidaiLookupItem
