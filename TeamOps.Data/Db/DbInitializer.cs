@@ -32,8 +32,8 @@ namespace TeamOps.Data.Db
                 pragma.ExecuteNonQuery();
             }
 
+            DemandCleanOrVersionedDatabase(conn);
             EnsureMigrationTable(conn);
-            EnsureLegacyBaseline(conn);
 
             foreach (var migration in GetMigrations())
                 ApplyMigration(conn, migration);
@@ -78,41 +78,24 @@ namespace TeamOps.Data.Db
             new(6, "Paid leave permission", "TeamOps.Data.Migrations.V2_0006_PaidLeavePermission.sql")
         ];
 
-        private static void EnsureLegacyBaseline(SqliteConnection conn)
+        private static void DemandCleanOrVersionedDatabase(SqliteConnection conn)
         {
-            EnsureColumn(conn, "Operators", "BadgeCode", "TEXT");
-            EnsureColumn(conn, "Sectors", "Code", "TEXT");
-            EnsureColumn(conn, "Sectors", "OrganizationNodeId", "INTEGER REFERENCES OrganizationNodes(Id)");
-            EnsureColumn(conn, "Sectors", "IsActive", "INTEGER NOT NULL DEFAULT 1");
-        }
-
-        private static void EnsureColumn(
-            SqliteConnection conn,
-            string tableName,
-            string columnName,
-            string definition)
-        {
-            using var table = conn.CreateCommand();
-            table.CommandText = @"
-                SELECT COUNT(*)
-                FROM sqlite_master
-                WHERE type = 'table' AND name = @tableName COLLATE NOCASE;";
-            table.Parameters.AddWithValue("@tableName", tableName);
-            if ((long)table.ExecuteScalar()! == 0)
+            using var migrationTable = conn.CreateCommand();
+            migrationTable.CommandText = @"
+                SELECT COUNT(*) FROM sqlite_master
+                WHERE type = 'table' AND name = 'SchemaMigrations' COLLATE NOCASE;";
+            if ((long)migrationTable.ExecuteScalar()! > 0)
                 return;
 
-            using var columns = conn.CreateCommand();
-            columns.CommandText = $"PRAGMA table_info(\"{tableName}\");";
-            using var reader = columns.ExecuteReader();
-            while (reader.Read())
-            {
-                if (string.Equals(reader.GetString(1), columnName, StringComparison.OrdinalIgnoreCase))
-                    return;
-            }
-
-            using var alter = conn.CreateCommand();
-            alter.CommandText = $"ALTER TABLE \"{tableName}\" ADD COLUMN \"{columnName}\" {definition};";
-            alter.ExecuteNonQuery();
+            using var applicationTables = conn.CreateCommand();
+            applicationTables.CommandText = @"
+                SELECT COUNT(*) FROM sqlite_master
+                WHERE type = 'table'
+                  AND name NOT LIKE 'sqlite_%';";
+            if ((long)applicationTables.ExecuteScalar()! > 0)
+                throw new InvalidOperationException(
+                    "Banco anterior ao Schema V2 detectado. Esta versao requer uma instalacao limpa. " +
+                    "Configure um arquivo SQLite novo ou remova o banco antigo apos realizar o backup necessario.");
         }
 
         private static void ApplyMigration(SqliteConnection conn, MigrationDefinition migration)
