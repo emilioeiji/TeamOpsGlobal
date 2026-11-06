@@ -45,16 +45,38 @@ public sealed class OrganizationAdministrationTests
     }
 
     [Fact]
-    public void ProtectedCodesCannotBeRenamedOrDeactivated()
+    public void RootIdentityComesFromTheTree_NotFromItsCode()
     {
         using var context = new DatabaseTestContext();
         var directorId = ProvisionDirector(context);
         var service = new OrganizationAdministrationService(context.Factory);
         var root = new OrganizationRepository(context.Factory).GetByCode("5500")!;
 
+        service.UpdateUnit(directorId, root.Id,
+            new OrganizationUnitSaveRequest(null, "ROOT", "Raiz", "", true));
+
+        using var conn = context.Factory.CreateOpenConnection();
+        Assert.Equal(root.Id, conn.ExecuteScalar<int>(
+            "SELECT Id FROM OrganizationNodes WHERE Code = 'ROOT';"));
         Assert.Throws<InvalidOperationException>(() => service.UpdateUnit(directorId, root.Id,
-            new OrganizationUnitSaveRequest(null, "ROOT", "Raiz", "", true)));
+            new OrganizationUnitSaveRequest(root.Id, "ROOT", "Raiz", "", true)));
         Assert.Throws<InvalidOperationException>(() => service.DeactivateUnit(directorId, root.Id));
+    }
+
+    [Fact]
+    public void UnitCannotBeMovedBelowItsOwnDescendant()
+    {
+        using var context = new DatabaseTestContext();
+        var directorId = ProvisionDirector(context);
+        var service = new OrganizationAdministrationService(context.Factory);
+        var root = new OrganizationRepository(context.Factory).GetByCode("5500")!;
+        var parentId = service.AddUnit(directorId,
+            new OrganizationUnitSaveRequest(root.Id, "BRANCH", "Ramo", "", true));
+        var childId = service.AddUnit(directorId,
+            new OrganizationUnitSaveRequest(parentId, "BRANCH-1", "Sub-ramo", "", true));
+
+        Assert.Throws<InvalidOperationException>(() => service.UpdateUnit(directorId, parentId,
+            new OrganizationUnitSaveRequest(childId, "BRANCH", "Ramo", "", true)));
     }
 
     [Fact]

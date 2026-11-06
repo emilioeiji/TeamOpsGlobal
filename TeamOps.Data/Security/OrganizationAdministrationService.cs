@@ -6,7 +6,6 @@ namespace TeamOps.Data.Security
 {
     public sealed class OrganizationAdministrationService
     {
-        private static readonly HashSet<string> ProtectedCodes = new(StringComparer.OrdinalIgnoreCase) { "5500", "5552" };
         private readonly SqliteConnectionFactory _factory;
         private readonly AdministrativeScopeService _scope;
 
@@ -22,7 +21,7 @@ namespace TeamOps.Data.Security
             Validate(request.Code, request.NamePt);
             using var conn = _factory.CreateOpenConnection();
             using var transaction = conn.BeginTransaction();
-            DemandParentUnit(conn, transaction, request.ParentId, null);
+            DemandParentUnit(conn, transaction, request.ParentId, null, required: true);
             DemandUniqueCode(conn, transaction, request.Code, null);
             var id = conn.ExecuteScalar<int>(@"
                 INSERT INTO OrganizationNodes (ParentId, NodeType, Code, NamePt, NameJp, IsActive)
@@ -39,11 +38,13 @@ namespace TeamOps.Data.Security
             Validate(request.Code, request.NamePt);
             using var conn = _factory.CreateOpenConnection();
             using var transaction = conn.BeginTransaction();
-            var existingCode = conn.ExecuteScalar<string?>(
-                "SELECT Code FROM OrganizationNodes WHERE Id = @nodeId AND NodeType = 'Unit';",
+            var existing = conn.QuerySingleOrDefault<UnitReference>(
+                "SELECT Id, ParentId, Code FROM OrganizationNodes WHERE Id = @nodeId AND NodeType = 'Unit';",
                 new { nodeId }, transaction) ?? throw new InvalidOperationException("Unidade organizacional nao encontrada.");
-            if (ProtectedCodes.Contains(existingCode) && !existingCode.Equals(request.Code.Trim(), StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("Os codigos estruturais 5500 e 5552 nao podem ser alterados.");
+            if (!existing.ParentId.HasValue && request.ParentId.HasValue)
+                throw new InvalidOperationException("A raiz organizacional nao pode ser movida para dentro da propria estrutura.");
+            if (!existing.ParentId.HasValue && !request.IsActive)
+                throw new InvalidOperationException("A raiz organizacional nao pode ser desativada.");
             DemandParentUnit(conn, transaction, request.ParentId, nodeId);
             DemandUniqueCode(conn, transaction, request.Code, nodeId);
             if (!request.IsActive)
@@ -114,14 +115,14 @@ namespace TeamOps.Data.Security
             _scope.DemandGlobal(actorUserId, PermissionActions.Delete);
             using var conn = _factory.CreateOpenConnection();
             using var transaction = conn.BeginTransaction();
-            var code = conn.ExecuteScalar<string?>(
-                "SELECT Code FROM OrganizationNodes WHERE Id = @nodeId AND NodeType = 'Unit';", new { nodeId }, transaction)
+            var unit = conn.QuerySingleOrDefault<UnitReference>(
+                "SELECT Id, ParentId, Code FROM OrganizationNodes WHERE Id = @nodeId AND NodeType = 'Unit';", new { nodeId }, transaction)
                 ?? throw new InvalidOperationException("Unidade organizacional nao encontrada.");
-            if (ProtectedCodes.Contains(code))
-                throw new InvalidOperationException("As unidades estruturais 5500 e 5552 nao podem ser desativadas.");
+            if (!unit.ParentId.HasValue)
+                throw new InvalidOperationException("A raiz organizacional nao pode ser desativada.");
             DemandEmptyUnit(conn, transaction, nodeId);
             conn.Execute("UPDATE OrganizationNodes SET IsActive = 0, UpdatedAt = CURRENT_TIMESTAMP WHERE Id = @nodeId;", new { nodeId }, transaction);
-            WriteAudit(conn, transaction, actorUserId, "OrganizationUnitDeactivated", "OrganizationNode", nodeId, code);
+            WriteAudit(conn, transaction, actorUserId, "OrganizationUnitDeactivated", "OrganizationNode", nodeId, unit.Code);
             transaction.Commit();
         }
 
@@ -154,6 +155,16 @@ namespace TeamOps.Data.Security
                     "SELECT EXISTS(SELECT 1 FROM OrganizationNodes WHERE Id = @parentId AND NodeType = 'Unit' AND IsActive = 1);",
                     new { parentId }, transaction) != 1)
                 throw new InvalidOperationException("Unidade superior invalida.");
+            if (currentNodeId.HasValue && conn.ExecuteScalar<long>(@"
+                    WITH RECURSIVE descendants(Id) AS (
+                        SELECT Id FROM OrganizationNodes WHERE ParentId = @currentNodeId
+                        UNION ALL
+                        SELECT child.Id FROM OrganizationNodes child
+                        JOIN descendants parent ON child.ParentId = parent.Id
+                    )
+                    SELECT EXISTS(SELECT 1 FROM descendants WHERE Id = @parentId);",
+                    new { currentNodeId, parentId }, transaction) == 1)
+                throw new InvalidOperationException("Uma unidade nao pode ser movida para dentro de um de seus descendentes.");
         }
 
         private static void DemandUniqueCode(System.Data.IDbConnection conn, System.Data.IDbTransaction transaction,
@@ -204,6 +215,13 @@ namespace TeamOps.Data.Security
         {
             public int Id { get; set; }
             public int OrganizationNodeId { get; set; }
+            public string Code { get; set; } = string.Empty;
+        }
+
+        private sealed class UnitReference
+        {
+            public int Id { get; set; }
+            public int? ParentId { get; set; }
             public string Code { get; set; } = string.Empty;
         }
 

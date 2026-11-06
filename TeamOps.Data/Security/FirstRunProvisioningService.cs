@@ -29,6 +29,7 @@ namespace TeamOps.Data.Security
 
             using var conn = _factory.CreateOpenConnection();
             using var transaction = conn.BeginTransaction(System.Data.IsolationLevel.Serializable);
+            var rootId = OrganizationRootResolver.ResolveRequired(conn, transaction);
 
             using (var existing = conn.CreateCommand())
             {
@@ -47,17 +48,17 @@ namespace TeamOps.Data.Security
                         (Login, CodigoFJ, Name, PasswordHash, ProfileId,
                          ReferenceNodeId, IsActive, PasswordChangedAt)
                     SELECT @login, NULL, @name, @passwordHash,
-                           profile.Id, root.Id, 1, CURRENT_TIMESTAMP
+                           profile.Id, @rootId, 1, CURRENT_TIMESTAMP
                     FROM AccessProfiles profile
-                    CROSS JOIN OrganizationNodes root
-                    WHERE profile.Code = 'DIRECTOR' AND root.Code = '5500';
+                    WHERE profile.Code = 'DIRECTOR';
                     SELECT last_insert_rowid();";
                 insert.Parameters.AddWithValue("@login", normalizedLogin);
                 insert.Parameters.AddWithValue("@name", normalizedName);
                 insert.Parameters.AddWithValue("@passwordHash", passwordHash);
+                insert.Parameters.AddWithValue("@rootId", rootId);
                 userId = checked((int)(long)insert.ExecuteScalar()!);
                 if (userId <= 0)
-                    throw new InvalidOperationException("Perfil Diretor ou unidade 5500 nao foi encontrado.");
+                    throw new InvalidOperationException("Perfil Diretor nao foi encontrado.");
             }
 
             using (var audit = conn.CreateCommand())

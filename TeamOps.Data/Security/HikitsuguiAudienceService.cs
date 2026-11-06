@@ -45,13 +45,7 @@ namespace TeamOps.Data.Security
         public void SetGeneralAudience(int actorUserId, int hikitsuguiId)
         {
             using var conn = _factory.CreateOpenConnection();
-            using var root = conn.CreateCommand();
-            root.CommandText = "SELECT Id FROM OrganizationNodes WHERE Code = '5500' AND IsActive = 1;";
-            var rootValue = root.ExecuteScalar();
-            if (rootValue is null or DBNull)
-                throw new InvalidOperationException("A raiz organizacional 5500 nao foi encontrada.");
-
-            var rootId = Convert.ToInt32(rootValue, System.Globalization.CultureInfo.InvariantCulture);
+            var rootId = OrganizationRootResolver.ResolveRequired(conn);
             var targetSectors = GetOrganizationSectorIds(rootId);
             if (targetSectors.Count == 0)
                 throw new InvalidOperationException("A organizacao nao possui setores ativos.");
@@ -210,9 +204,7 @@ namespace TeamOps.Data.Security
                 return GetOrganizationSectorIds(audience[0].OrganizationNodeId!.Value);
 
             using var conn = _factory.CreateOpenConnection();
-            using var root = conn.CreateCommand();
-            root.CommandText = "SELECT Id FROM OrganizationNodes WHERE Code = '5500' AND IsActive = 1;";
-            return GetOrganizationSectorIds(Convert.ToInt32(root.ExecuteScalar(), System.Globalization.CultureInfo.InvariantCulture));
+            return GetOrganizationSectorIds(OrganizationRootResolver.ResolveRequired(conn));
         }
 
         private HashSet<int> GetOrganizationSectorIds(int organizationNodeId)

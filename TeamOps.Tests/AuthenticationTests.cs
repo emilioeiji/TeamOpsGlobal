@@ -50,6 +50,31 @@ public sealed class AuthenticationTests
     }
 
     [Fact]
+    public void FirstDirector_UsesTheTreeRoot_WhenItsCodeWasCustomized()
+    {
+        using var context = new DatabaseTestContext();
+        using (var conn = context.Factory.CreateOpenConnection())
+        using (var rename = conn.CreateCommand())
+        {
+            rename.CommandText = "UPDATE OrganizationNodes SET Code = 'CORPORATE' WHERE ParentId IS NULL;";
+            rename.ExecuteNonQuery();
+        }
+
+        var userId = new FirstRunProvisioningService(context.Factory)
+            .ProvisionDirector("custom.root.director", "Custom Root Director", StrongPassword);
+
+        using var verification = context.Factory.CreateOpenConnection();
+        using var command = verification.CreateCommand();
+        command.CommandText = @"
+            SELECT node.Code
+            FROM Users user
+            JOIN OrganizationNodes node ON node.Id = user.ReferenceNodeId
+            WHERE user.Id = @userId;";
+        command.Parameters.AddWithValue("@userId", userId);
+        Assert.Equal("CORPORATE", command.ExecuteScalar());
+    }
+
+    [Fact]
     public void FiveInvalidAttempts_LockAccountAndWriteAudit()
     {
         using var context = new DatabaseTestContext();

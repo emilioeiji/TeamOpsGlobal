@@ -74,9 +74,17 @@ public sealed class HikitsuguiAudienceTests
         var unauthorizedMessage = CreateMessage(context, gl);
         var service = new HikitsuguiAudienceService(context.Factory);
 
+        using (var conn = context.Factory.CreateOpenConnection())
+        using (var rename = conn.CreateCommand())
+        {
+            rename.CommandText = "UPDATE OrganizationNodes SET Code = 'CORPORATE' WHERE ParentId IS NULL;";
+            rename.ExecuteNonQuery();
+        }
+
         service.SetGeneralAudience(director, generalMessage);
 
         Assert.True(service.CanView(operatorUser, generalMessage));
+        Assert.True(service.IsTargetedToSector(generalMessage, SectorId(context, "APL")));
         Assert.Throws<UnauthorizedAccessException>(() => service.SetGeneralAudience(gl, unauthorizedMessage));
     }
 
