@@ -51,7 +51,7 @@ namespace TeamOps.UI.Forms
 
         private async void InitializeWebView()
         {
-            _service.EnsureSchema();
+            _service.RefreshSectorTopology();
 
             await _webView.EnsureCoreWebView2Async(null);
 

@@ -565,6 +565,7 @@ CREATE INDEX IF NOT EXISTS IX_Operators_BadgeCode ON Operators(BadgeCode);
 
 CREATE TABLE IF NOT EXISTS Ec2AdministratorImports (
     Id INTEGER PRIMARY KEY AUTOINCREMENT,
+    SourceType TEXT NOT NULL DEFAULT 'Administrator',
     SourceFile TEXT NOT NULL,
     FileLastWriteTime TEXT,
     FileLength INTEGER NOT NULL DEFAULT 0,
@@ -609,6 +610,9 @@ CREATE TABLE IF NOT EXISTS Ec2MachineSnapshots (
 CREATE TABLE IF NOT EXISTS Ec2MachineCurrentState (
     MachineId INTEGER PRIMARY KEY,
     MachineCode TEXT NOT NULL,
+    ImportId INTEGER,
+    SourceType TEXT NOT NULL DEFAULT 'Administrator',
+    IsStale INTEGER NOT NULL DEFAULT 0,
     SectorId INTEGER,
     LocalId INTEGER,
     AreaLabel TEXT,
@@ -631,6 +635,7 @@ CREATE TABLE IF NOT EXISTS Ec2MachineCurrentState (
     ImportedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     LastSeenAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     StoppedSinceAt TEXT,
+    FOREIGN KEY (ImportId) REFERENCES Ec2AdministratorImports(Id),
     FOREIGN KEY (MachineId) REFERENCES Machines(Id),
     FOREIGN KEY (SectorId) REFERENCES Sectors(Id),
     FOREIGN KEY (LocalId) REFERENCES Locals(Id)

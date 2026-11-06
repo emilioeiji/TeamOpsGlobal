@@ -139,10 +139,6 @@ namespace TeamOps.Services
             using var conn = _factory.CreateOpenConnection();
             Record(result, "OpenConnection", openWatch);
 
-            var schemaWatch = Stopwatch.StartNew();
-            ProductionSchemaMigrator.Ensure(conn);
-            Record(result, "EnsureSchema", schemaWatch);
-
             var txWatch = Stopwatch.StartNew();
             using var tx = conn.BeginTransaction();
             Record(result, "BeginTransaction", txWatch);

@@ -146,7 +146,6 @@ namespace TeamOps.Services
                 .Count();
 
             using var conn = _factory.CreateOpenConnection();
-            ProductionSchemaMigrator.Ensure(conn);
 
             var existingImport = conn.QueryFirstOrDefault<Ec2ExistingImportRow>(
                 @"

@@ -186,7 +186,6 @@ void RunMachineLocationGuard()
 {
     PrintRuntimeConfigDiagnostics();
     using var conn = factory.CreateOpenConnection();
-    ProductionSchemaMigrator.Ensure(conn);
 
     var before = ReadMachineLocationSnapshot(conn);
     Console.WriteLine("=== MACHINE LOCATION GUARD ===");
@@ -399,8 +398,7 @@ void RunValidateOvertimeReal(string[] overtimeArgs)
 {
     var options = ValidateOvertimeRealOptions.Parse(overtimeArgs);
     using var conn = factory.CreateOpenConnection();
-    ProductionSchemaMigrator.Ensure(conn);
-    new TeamOps.UI.Services.HaidaiModuleService(factory).EnsureSchema();
+    new TeamOps.UI.Services.HaidaiModuleService(factory).RefreshSectorTopology();
 
     var shift = ResolveValidateShift(conn, options.Shift);
     var rows = conn.Query<OvertimeRealScheduleRow>(
@@ -723,7 +721,6 @@ void ShowDashboards()
 {
     PrintRuntimeConfigDiagnostics();
     using var conn = factory.CreateOpenConnection();
-    ProductionSchemaMigrator.Ensure(conn);
 
     var shifts = conn.Query<ShiftRow>(
         @"
@@ -816,7 +813,6 @@ void RunImportProfile(string[] profileArgs)
     {
         var analyticsWatch = Stopwatch.StartNew();
         using var conn = factory.CreateOpenConnection();
-        ProductionSchemaMigrator.Ensure(conn);
 
         var shifts = conn.Query<ShiftRow>(
             @"
@@ -980,7 +976,6 @@ void RunEc2Diagnostics()
 {
     PrintRuntimeConfigDiagnostics();
     using var conn = factory.CreateOpenConnection();
-    ProductionSchemaMigrator.Ensure(conn);
 
     var latestImport = conn.QueryFirstOrDefault<Ec2ImportProbeRow>(
         @"
@@ -1206,7 +1201,6 @@ void RunEc2ResetLatest()
     }
 
     using var conn = factory.CreateOpenConnection();
-    ProductionSchemaMigrator.Ensure(conn);
 
     var latest = conn.QueryFirstOrDefault<Ec2ImportProbeRow>(
         @"
@@ -1265,7 +1259,6 @@ void PrintImportPerformance(TeamOps.Core.Entities.ProductionImportResult result)
 void RunDbIndexCheck()
 {
     using var conn = factory.CreateOpenConnection();
-    ProductionSchemaMigrator.Ensure(conn);
 
     var requiredIndexes = new[]
     {
@@ -1324,7 +1317,6 @@ void RunSchemaValidation(bool repair)
     var before = InspectProductionSchema(conn);
     if (repair)
     {
-        ProductionSchemaMigrator.Ensure(conn);
         RepairProductionStatusSeeds(conn);
     }
 
@@ -1364,7 +1356,6 @@ void RunSchemaValidation(bool repair)
 void RunStatusHardeningChecks()
 {
     using var conn = factory.CreateOpenConnection();
-    ProductionSchemaMigrator.Ensure(conn);
     var dadSectorId = sectorCatalog.ResolveRequired("DAD");
     var gBareruSectorId = sectorCatalog.ResolveRequired("G-BARERU");
 
@@ -1644,7 +1635,6 @@ void RepairProductionStatusSeeds(System.Data.IDbConnection conn)
 void RunProductionDiagnostics()
 {
     using var conn = factory.CreateOpenConnection();
-    ProductionSchemaMigrator.Ensure(conn);
     var dadSectorId = sectorCatalog.ResolveRequired("DAD");
     var gBareruSectorId = sectorCatalog.ResolveRequired("G-BARERU");
 
@@ -1787,7 +1777,6 @@ void RunProductionAudit(string[] auditArgs)
     }
 
     using var conn = factory.CreateOpenConnection();
-    ProductionSchemaMigrator.Ensure(conn);
 
     Console.WriteLine("=== PRODUCTION AUDIT ===");
     Console.WriteLine($"Database={settings.DatabasePath}");
@@ -1968,8 +1957,7 @@ void RunValidateReports(string[] validateArgs)
 {
     var options = ValidateReportsOptions.Parse(validateArgs);
     using var conn = factory.CreateOpenConnection();
-    ProductionSchemaMigrator.Ensure(conn);
-    new TeamOps.UI.Services.HaidaiModuleService(factory).EnsureSchema();
+    new TeamOps.UI.Services.HaidaiModuleService(factory).RefreshSectorTopology();
 
     var shift = ResolveValidateShift(conn, options.Shift);
     var sectorId = ResolveValidateSector(options.Sector);
@@ -2118,8 +2106,7 @@ void RunValidateYakinProduction(string[] validateArgs)
 {
     var options = ValidateYakinProductionOptions.Parse(validateArgs);
     using var conn = factory.CreateOpenConnection();
-    ProductionSchemaMigrator.Ensure(conn);
-    new TeamOps.UI.Services.HaidaiModuleService(factory).EnsureSchema();
+    new TeamOps.UI.Services.HaidaiModuleService(factory).RefreshSectorTopology();
 
     var shift = ResolveValidateShift(conn, "yakin");
     var operatorCodes = options.Operator.Equals("all", StringComparison.OrdinalIgnoreCase)
@@ -2204,7 +2191,6 @@ void RunMachineCleanup(string[] cleanupArgs)
 {
     var apply = cleanupArgs.Any(arg => arg.Equals("--apply", StringComparison.OrdinalIgnoreCase));
     using var conn = factory.CreateOpenConnection();
-    ProductionSchemaMigrator.Ensure(conn);
 
     var rows = conn.Query<MachineCleanupProbeRow>(
             @"
@@ -2333,7 +2319,6 @@ void RunStatusReport(string[] reportArgs)
     var dadSectorId = sectorCatalog.ResolveRequired("DAD");
 
     using var conn = factory.CreateOpenConnection();
-    ProductionSchemaMigrator.Ensure(conn);
 
     var statuses = conn.Query<StatusDefinitionProbeRow>(
         @"

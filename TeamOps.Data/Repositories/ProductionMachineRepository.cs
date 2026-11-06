@@ -19,7 +19,6 @@ namespace TeamOps.Data.Repositories
         public Machine? GetByMachineCode(string machineCode)
         {
             using var conn = _factory.CreateOpenConnection();
-            ProductionSchemaMigrator.Ensure(conn);
             return GetByMachineCode(conn, machineCode);
         }
 
@@ -86,7 +85,6 @@ namespace TeamOps.Data.Repositories
         public Machine EnsureMachine(string machineCode, string lineCode, int? sectorId = null, int? localId = null)
         {
             using var conn = _factory.CreateOpenConnection();
-            ProductionSchemaMigrator.Ensure(conn);
             return EnsureMachine(conn, machineCode, lineCode, sectorId, localId);
         }
 

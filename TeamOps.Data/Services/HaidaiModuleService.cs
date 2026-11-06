@@ -26,7 +26,7 @@ namespace TeamOps.UI.Services
             _factory = factory;
         }
 
-        public void EnsureSchema()
+        public void RefreshSectorTopology()
         {
             using var conn = _factory.CreateOpenConnection();
             _sectorTopology = LoadSectorTopology(conn);
@@ -34,7 +34,7 @@ namespace TeamOps.UI.Services
 
         public HaidaiInitPayload GetInitialPayload(int defaultShiftId, int defaultSectorId)
         {
-            EnsureSchema();
+            RefreshSectorTopology();
 
             using var conn = _factory.CreateOpenConnection();
 
@@ -113,7 +113,7 @@ namespace TeamOps.UI.Services
             int sectorId,
             IReadOnlyCollection<int>? authorizedSectorIds = null)
         {
-            EnsureSchema();
+            RefreshSectorTopology();
 
             using var conn = _factory.CreateOpenConnection();
 
@@ -296,7 +296,7 @@ namespace TeamOps.UI.Services
             HaidaiMonthlySaveRequest request,
             IReadOnlyCollection<int>? authorizedSectorIds = null)
         {
-            EnsureSchema();
+            RefreshSectorTopology();
 
             using var conn = _factory.CreateOpenConnection();
             using var transaction = conn.BeginTransaction();
@@ -710,7 +710,7 @@ namespace TeamOps.UI.Services
             int sectorId,
             IReadOnlyCollection<int>? authorizedSectorIds = null)
         {
-            EnsureSchema();
+            RefreshSectorTopology();
 
             using var conn = _factory.CreateOpenConnection();
             var includeSharedGdad = CanUseSharedGdad(authorizedSectorIds) && SupportsSharedGdad(sectorId);
@@ -1010,7 +1010,7 @@ namespace TeamOps.UI.Services
             HaidaiSaveAssignmentRequest request,
             IReadOnlyCollection<int>? authorizedSectorIds = null)
         {
-            EnsureSchema();
+            RefreshSectorTopology();
 
             using var conn = _factory.CreateOpenConnection();
             using var transaction = conn.BeginTransaction();
@@ -1076,7 +1076,7 @@ namespace TeamOps.UI.Services
 
         public void UpsertException(DateTime date, string operatorCodigoFJ, int motiveId, string notes, string authorizedByCodigoFJ)
         {
-            EnsureSchema();
+            RefreshSectorTopology();
 
             using var conn = _factory.CreateOpenConnection();
             using var transaction = conn.BeginTransaction();
@@ -1141,7 +1141,7 @@ namespace TeamOps.UI.Services
 
         public void ClearException(DateTime date, string operatorCodigoFJ)
         {
-            EnsureSchema();
+            RefreshSectorTopology();
 
             using var conn = _factory.CreateOpenConnection();
             using var transaction = conn.BeginTransaction();
@@ -1194,7 +1194,7 @@ namespace TeamOps.UI.Services
 
         public void RegisterMovement(HaidaiMovementRequest request)
         {
-            EnsureSchema();
+            RefreshSectorTopology();
 
             using var conn = _factory.CreateOpenConnection();
             using var transaction = conn.BeginTransaction();
@@ -1434,7 +1434,7 @@ namespace TeamOps.UI.Services
 
         public void DeleteMovement(DateTime date, int shiftId, int sectorId, string operatorCodigoFJ, int movementId)
         {
-            EnsureSchema();
+            RefreshSectorTopology();
 
             using var conn = _factory.CreateOpenConnection();
             using var transaction = conn.BeginTransaction();
@@ -1639,7 +1639,7 @@ namespace TeamOps.UI.Services
 
         public void RestoreLineup(DateTime date, int shiftId, int sectorId, string operatorCodigoFJ)
         {
-            EnsureSchema();
+            RefreshSectorTopology();
 
             using var conn = _factory.CreateOpenConnection();
             var storageSectorId = ResolveStorageSectorId(
@@ -1666,7 +1666,7 @@ namespace TeamOps.UI.Services
 
         public IReadOnlyList<HaidaiPlannedAssignment> GetActiveAssignments(DateTime date, int shiftId)
         {
-            EnsureSchema();
+            RefreshSectorTopology();
 
             using var conn = _factory.CreateOpenConnection();
             return conn.Query<HaidaiPlannedAssignment>(
@@ -1699,7 +1699,7 @@ namespace TeamOps.UI.Services
             int sectorId,
             IReadOnlyCollection<int>? authorizedSectorIds = null)
         {
-            EnsureSchema();
+            RefreshSectorTopology();
 
             var exportDirectory = StoragePathResolver.GetRequiredPath("HaidaiExportDirectory");
 

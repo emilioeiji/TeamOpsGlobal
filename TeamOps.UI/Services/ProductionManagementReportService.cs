@@ -35,8 +35,7 @@ namespace TeamOps.UI.Services
         public ProductionManagementInitPayload GetInitialPayload()
         {
             using var conn = _factory.CreateOpenConnection();
-            TeamOps.Data.Db.ProductionSchemaMigrator.Ensure(conn);
-            new HaidaiModuleService(_factory).EnsureSchema();
+            new HaidaiModuleService(_factory).RefreshSectorTopology();
 
             return new ProductionManagementInitPayload(
                 QueryLookup(conn, "Shifts").ToList(),
@@ -101,8 +100,7 @@ namespace TeamOps.UI.Services
             DemandSector(filter.SectorId);
 
             using var conn = _factory.CreateOpenConnection();
-            TeamOps.Data.Db.ProductionSchemaMigrator.Ensure(conn);
-            new HaidaiModuleService(_factory).EnsureSchema();
+            new HaidaiModuleService(_factory).RefreshSectorTopology();
 
             var shifts = conn.Query<LookupRow>(
                 "SELECT Id, COALESCE(NamePt, '') AS NamePt, COALESCE(NULLIF(NameJp, ''), NamePt, '') AS NameJp FROM Shifts ORDER BY Id;")

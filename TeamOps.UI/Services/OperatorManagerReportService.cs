@@ -320,7 +320,7 @@ namespace TeamOps.UI.Services
 
         public OperatorPresenceReportPayload GetPresenceReport(OperatorPresenceReportFilter filter)
         {
-            new HaidaiModuleService(_factory).EnsureSchema();
+            new HaidaiModuleService(_factory).RefreshSectorTopology();
             using var conn = _factory.CreateOpenConnection();
 
             var startDate = ParseDateOrDefault(filter.StartDateIso, DateTime.Today.AddDays(-29));

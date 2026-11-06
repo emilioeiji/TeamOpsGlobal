@@ -129,7 +129,6 @@ namespace TeamOps.UI.Services
         private Dictionary<string, double> LoadProcedureTimes(int sectorId, int localId)
         {
             using var conn = _factory.CreateOpenConnection();
-            ProductionSchemaMigrator.Ensure(conn);
 
             var rows = conn.Query<ProcedureTimeRow>(
                 @"

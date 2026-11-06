@@ -150,7 +150,6 @@ namespace TeamOps.UI.Forms
         private object BuildLookups()
         {
             using var conn = _factory.CreateOpenConnection();
-            EnsureAdminSchema(conn);
             var authorizedSectorIds = _scope.AuthorizedSectorIds.ToArray();
 
             return new
@@ -215,11 +214,6 @@ namespace TeamOps.UI.Forms
             };
         }
 
-        private static void EnsureAdminSchema(IDbConnection conn)
-        {
-            ProductionSchemaMigrator.Ensure(conn);
-        }
-
         private void SendEntityRows(string entityKey, JsonElement? root = null)
         {
             _scope = _scopeService.GetScope(CurrentUserId, PermissionActions.View);
@@ -227,7 +221,6 @@ namespace TeamOps.UI.Forms
                 throw new InvalidOperationException(L("Item administrativo invalido.", "\u7121\u52b9\u306a\u7ba1\u7406\u9805\u76ee\u3067\u3059\u3002"));
 
             using var conn = _factory.CreateOpenConnection();
-            EnsureAdminSchema(conn);
             var rows = entityKey == "system_log"
                 ? LoadSystemLogRows(conn, root).ToList()
                 : FilterRows(entity, entity.QueryRows(conn)).ToList();
@@ -326,7 +319,6 @@ namespace TeamOps.UI.Forms
                 throw new InvalidOperationException(L("Este item e somente leitura.", "\u3053\u306e\u9805\u76ee\u306f\u95b2\u89a7\u306e\u307f\u3067\u3059\u3002"));
 
             using var conn = _factory.CreateOpenConnection();
-            EnsureAdminSchema(conn);
             var values = root.GetProperty("values");
             if (!SaveOrganizationEntity(entityKey, values))
             {
@@ -361,7 +353,6 @@ namespace TeamOps.UI.Forms
                 throw new InvalidOperationException(L("Este item e somente leitura.", "\u3053\u306e\u9805\u76ee\u306f\u95b2\u89a7\u306e\u307f\u3067\u3059\u3002"));
 
             using var conn = _factory.CreateOpenConnection();
-            EnsureAdminSchema(conn);
             var values = root.GetProperty("values");
             if (!UpdateOrganizationEntity(entityKey, id, values))
             {
@@ -397,7 +388,6 @@ namespace TeamOps.UI.Forms
                 throw new InvalidOperationException(L("Este item e somente leitura.", "\u3053\u306e\u9805\u76ee\u306f\u95b2\u89a7\u306e\u307f\u3067\u3059\u3002"));
 
             using var conn = _factory.CreateOpenConnection();
-            EnsureAdminSchema(conn);
             if (!DeleteOrganizationEntity(entityKey, id))
             {
                 DemandExistingScope(conn, entity, id, PermissionActions.Delete);

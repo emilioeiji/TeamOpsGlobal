@@ -49,9 +49,8 @@ namespace TeamOps.Services
             long buildAreasMs = 0;
 
             using var conn = _factory.CreateOpenConnection();
-            ProductionSchemaMigrator.Ensure(conn);
             var haidaiService = new HaidaiModuleService(_factory);
-            haidaiService.EnsureSchema();
+            haidaiService.RefreshSectorTopology();
 
             var shifts = Measure(() => conn.Query<ShiftLookupRow>(
                 @"
@@ -662,9 +661,8 @@ namespace TeamOps.Services
             }
 
             using var conn = _factory.CreateOpenConnection();
-            ProductionSchemaMigrator.Ensure(conn);
             var haidaiService = new HaidaiModuleService(_factory);
-            haidaiService.EnsureSchema();
+            haidaiService.RefreshSectorTopology();
 
             var shifts = conn.Query<ShiftLookupRow>(
                 @"

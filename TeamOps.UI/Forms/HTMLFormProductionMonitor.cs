@@ -167,7 +167,6 @@ namespace TeamOps.UI.Forms
                 var initPayload = await Task.Run(() =>
                 {
                     using var conn = _factory.CreateOpenConnection();
-                    ProductionSchemaMigrator.Ensure(conn);
 
                     return new
                     {
@@ -583,7 +582,6 @@ namespace TeamOps.UI.Forms
                 var rows = await Task.Run(() =>
                 {
                     using var conn = _factory.CreateOpenConnection();
-                    ProductionSchemaMigrator.Ensure(conn);
 
                     return conn.Query(
                         @"
@@ -771,7 +769,7 @@ namespace TeamOps.UI.Forms
                 message += " | Perf: " + string.Join(
                     ", ",
                     result.PerformanceMs
-                        .Where(item => item.Key is "Batch" or "DiscoverFiles" or "ReadFiles" or "Parse" or "OpenConnection" or "EnsureSchema" or "Cleanup" or "LoadMachines" or "LoadStatuses" or "DuplicateCheck" or "InsertEvents" or "Commit" or "Ec2Import" or "Ec2Total" or "DashboardRefresh" or "Total")
+                        .Where(item => item.Key is "Batch" or "DiscoverFiles" or "ReadFiles" or "Parse" or "OpenConnection" or "Cleanup" or "LoadMachines" or "LoadStatuses" or "DuplicateCheck" or "InsertEvents" or "Commit" or "Ec2Import" or "Ec2Total" or "DashboardRefresh" or "Total")
                         .Select(item => $"{item.Key}={item.Value}ms"));
             }
 
@@ -788,7 +786,6 @@ namespace TeamOps.UI.Forms
         private ProductionDashboardFilter ResolvePostImportDashboardFilter(ProductionDashboardFilter filter)
         {
             using var conn = _factory.CreateOpenConnection();
-            ProductionSchemaMigrator.Ensure(conn);
 
             var selectedDateHasEvents = conn.ExecuteScalar<int>(
                 @"
@@ -824,7 +821,6 @@ namespace TeamOps.UI.Forms
         private object LoadStatuses()
         {
             using var conn = _factory.CreateOpenConnection();
-            ProductionSchemaMigrator.Ensure(conn);
 
             return LoadStatuses(conn);
         }
@@ -832,7 +828,6 @@ namespace TeamOps.UI.Forms
         private object LoadPartCodeStyles()
         {
             using var conn = _factory.CreateOpenConnection();
-            ProductionSchemaMigrator.Ensure(conn);
 
             return conn.Query(
                 @"
