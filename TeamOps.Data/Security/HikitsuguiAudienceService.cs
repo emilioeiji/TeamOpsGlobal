@@ -34,6 +34,9 @@ namespace TeamOps.Data.Security
 
         public void SetOrganizationAudience(int actorUserId, int hikitsuguiId, int organizationNodeId)
         {
+            if (!GetTargetableOrganizationUnits(actorUserId).Any(unit => unit.Id == organizationNodeId))
+                throw new UnauthorizedAccessException("Unidade organizacional fora do escopo autorizado.");
+
             var targetSectors = GetOrganizationSectorIds(organizationNodeId);
             if (targetSectors.Count == 0)
                 throw new InvalidOperationException("A unidade nao possui setores ativos.");
@@ -52,6 +55,57 @@ namespace TeamOps.Data.Security
 
             DemandAllSectors(actorUserId, PermissionActions.Create, targetSectors);
             ReplaceAudience(hikitsuguiId, "General", [], null);
+        }
+
+        public IReadOnlyList<HikitsuguiOrganizationAudienceOption> GetTargetableOrganizationUnits(int actorUserId)
+        {
+            var context = _authorization.GetContext(actorUserId);
+            if (!_authorization.IsAllowed(actorUserId, ModuleCodes.Hikitsugui, PermissionActions.Create))
+                return [];
+
+            using var conn = _factory.CreateOpenConnection();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                WITH RECURSIVE reference_scope(Id) AS (
+                    SELECT Id
+                    FROM OrganizationNodes
+                    WHERE Id = @referenceNodeId AND IsActive = 1
+                    UNION ALL
+                    SELECT child.Id
+                    FROM OrganizationNodes child
+                    JOIN reference_scope parent ON child.ParentId = parent.Id
+                    WHERE child.IsActive = 1
+                )
+                SELECT unit.Id,
+                       unit.Code,
+                       COALESCE(NULLIF(unit.NamePt, ''), unit.Code) AS NamePt,
+                       COALESCE(NULLIF(unit.NameJp, ''), unit.NamePt, unit.Code) AS NameJp
+                FROM OrganizationNodes unit
+                JOIN reference_scope scope ON scope.Id = unit.Id
+                WHERE unit.NodeType = 'Unit' AND unit.IsActive = 1
+                ORDER BY unit.Code, unit.Id;";
+            cmd.Parameters.AddWithValue("@referenceNodeId", context.ReferenceNodeId);
+
+            var result = new List<HikitsuguiOrganizationAudienceOption>();
+            using var reader = cmd.ExecuteReader();
+            var units = new List<HikitsuguiOrganizationAudienceOption>();
+            while (reader.Read())
+            {
+                units.Add(new HikitsuguiOrganizationAudienceOption(
+                    reader.GetInt32(0),
+                    reader.GetString(1),
+                    reader.GetString(2),
+                    reader.GetString(3)));
+            }
+
+            foreach (var unit in units)
+            {
+                var sectorIds = GetOrganizationSectorIds(unit.Id);
+                if (sectorIds.Count > 0 && sectorIds.All(context.AuthorizedSectorIds.Contains))
+                    result.Add(unit);
+            }
+
+            return result;
         }
 
         public bool CanView(int userId, int hikitsuguiId)
@@ -232,4 +286,10 @@ namespace TeamOps.Data.Security
 
         private sealed record AudienceRow(string Type, int? SectorId, int? OrganizationNodeId);
     }
+
+    public sealed record HikitsuguiOrganizationAudienceOption(
+        int Id,
+        string Code,
+        string NamePt,
+        string NameJp);
 }

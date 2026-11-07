@@ -64,6 +64,22 @@ public sealed class HikitsuguiAudienceTests
     }
 
     [Fact]
+    public void OrganizationAudienceOptions_ListOnlyUnitsFullyControlledByPublisher()
+    {
+        using var context = new DatabaseTestContext();
+        var director = CreateUser(context, "DIRECTOR", "5500");
+        var manager = CreateUser(context, "MANAGER", "5552");
+        var gl = CreateUser(context, "GL", "5552", "DAD");
+        var service = new HikitsuguiAudienceService(context.Factory);
+
+        Assert.Contains(service.GetTargetableOrganizationUnits(director), unit => unit.Code == "5500");
+        Assert.Contains(service.GetTargetableOrganizationUnits(director), unit => unit.Code == "5552");
+        Assert.Contains(service.GetTargetableOrganizationUnits(manager), unit => unit.Code == "5552");
+        Assert.DoesNotContain(service.GetTargetableOrganizationUnits(manager), unit => unit.Code == "5500");
+        Assert.Empty(service.GetTargetableOrganizationUnits(gl));
+    }
+
+    [Fact]
     public void GeneralAudience_CanBePublishedOnlyByOrganizationWideUser()
     {
         using var context = new DatabaseTestContext();

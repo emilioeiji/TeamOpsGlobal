@@ -117,8 +117,9 @@ namespace TeamOps.UI.Forms
                   ORDER BY NamePt;"
             );
 
-            var authorizedSectorIds = Program.CurrentSession?.Access.AuthorizedSectorIds
-                ?? throw new InvalidOperationException("Sessao de acesso nao inicializada.");
+            var authorizedSectorIds = new AuthorizationService(_factory)
+                .GetContext(_currentUser.Id)
+                .AuthorizedSectorIds;
 
             var locals = conn.Query(
                 @"SELECT
@@ -127,6 +128,7 @@ namespace TeamOps.UI.Forms
                       COALESCE(NamePt, '') AS NamePt,
                       COALESCE(NULLIF(NameJp, ''), NamePt, '') AS NameJp
                   FROM Locals
+                  WHERE COALESCE(IsActive, 1) = 1
                   ORDER BY NamePt;"
             ).Where(item => authorizedSectorIds.Contains((int)item.SectorId));
 
@@ -140,33 +142,8 @@ namespace TeamOps.UI.Forms
                   ORDER BY NamePt;"
             ).Where(item => authorizedSectorIds.Contains((int)item.Id));
 
-            var organizationNodes = conn.Query(
-                @"SELECT
-                      Id,
-                      Code,
-                      COALESCE(NamePt, Code) AS NamePt,
-                      COALESCE(NULLIF(NameJp, ''), NamePt, Code) AS NameJp
-                  FROM OrganizationNodes
-                  WHERE NodeType = 'Unit' AND IsActive = 1
-                  ORDER BY Code;"
-            ).Where(item =>
-            {
-                var descendantSectorIds = conn.Query<int>(
-                    @"WITH RECURSIVE descendants(Id) AS (
-                          SELECT Id FROM OrganizationNodes WHERE Id = @nodeId AND IsActive = 1
-                          UNION ALL
-                          SELECT child.Id FROM OrganizationNodes child
-                          JOIN descendants parent ON child.ParentId = parent.Id
-                          WHERE child.IsActive = 1
-                      )
-                      SELECT sector.Id FROM Sectors sector
-                      JOIN descendants ON descendants.Id = sector.OrganizationNodeId
-                      WHERE sector.IsActive = 1;",
-                    new { nodeId = (int)item.Id }).ToArray();
-
-                return descendantSectorIds.Length > 0
-                    && descendantSectorIds.All(authorizedSectorIds.Contains);
-            }).ToArray();
+            var organizationNodes = _audienceService
+                .GetTargetableOrganizationUnits(_currentUser.Id);
 
             var activeSectorIds = conn.Query<int>("SELECT Id FROM Sectors WHERE IsActive = 1;").ToArray();
             var canTargetGeneral = activeSectorIds.Length > 0

@@ -147,6 +147,12 @@ function preencherFiltros(data) {
     fillSelect("audienceSectorIds", data.sectors, "Id", getLocalizedField());
     fillSelect("audienceOrganizationNodeId", data.organizationNodes, "Id", getLocalizedField(), true);
 
+    const organizationOption = document.getElementById("txtAudienceOrganizationOption");
+    organizationOption.disabled = !data.organizationNodes?.length;
+    if (organizationOption.disabled && document.getElementById("audienceType").value === "organization") {
+        document.getElementById("audienceType").value = "sector";
+    }
+
     const generalOption = document.getElementById("txtAudienceGeneralOption");
     generalOption.disabled = !data.canTargetGeneral;
     updateAudienceFields();
