@@ -47,6 +47,12 @@ window.chrome?.webview?.addEventListener("message", event => {
             hideLoading();
             showNotice(`${payload.data?.message || "Exportado."} ${payload.data?.directory || ""}`.trim(), "success");
             break;
+        case "display_settings":
+            applyDisplaySettings(payload.data || {});
+            break;
+        case "preview_closed":
+            hideLoading();
+            break;
         case "error":
             hideLoading();
             showNotice(payload.message || "Erro inesperado.", "error");
@@ -58,10 +64,14 @@ function bindEvents() {
     document.getElementById("btnRefresh").addEventListener("click", () => refreshContext(true));
     document.getElementById("btnSaveMonth").addEventListener("click", saveMonthPlan);
     document.getElementById("btnExport").addEventListener("click", exportHtml);
+    document.getElementById("btnPreview").addEventListener("click", previewHtml);
     document.getElementById("monthPicker").addEventListener("change", () => refreshContext(false));
     document.getElementById("dayPicker").addEventListener("change", onDayChanged);
     document.getElementById("shiftPicker").addEventListener("change", () => refreshContext(false));
-    document.getElementById("sectorPicker").addEventListener("change", () => refreshContext(false));
+    document.getElementById("sectorPicker").addEventListener("change", () => {
+        post({ action: "load_display_settings", sectorId: Number(document.getElementById("sectorPicker").value || 0) });
+        refreshContext(false);
+    });
 
     document.getElementById("plannerTable").addEventListener("focusin", event => {
         const input = event.target.closest(".plan-cell");
@@ -214,6 +224,7 @@ function hydrateInit(data) {
     fillSelect("sectorPicker", state.sectors, data.defaults?.sectorId);
     document.getElementById("monthPicker").value = data.defaults?.monthIso || "";
     state.selectedDay = parseDateIso(data.defaults?.dateIso).day;
+    applyDisplaySettings(data.displaySettings || {});
 }
 
 function hydrateMonthPlan(data) {
@@ -320,9 +331,47 @@ function exportHtml() {
         post({
             action: "export_html",
             date: buildSelectedDateIso(month.year, month.month, state.selectedDay),
-            sectorId: Number(document.getElementById("sectorPicker").value || 0)
+            sectorId: Number(document.getElementById("sectorPicker").value || 0),
+            ...getDisplaySettings()
         });
     }, 40);
+}
+
+function previewHtml() {
+    const month = getSelectedMonth();
+    showLoading();
+    window.setTimeout(() => {
+        post({
+            action: "preview_html",
+            date: buildSelectedDateIso(month.year, month.month, state.selectedDay),
+            shiftId: Number(document.getElementById("shiftPicker").value || 0),
+            sectorId: Number(document.getElementById("sectorPicker").value || 0),
+            ...getDisplaySettings()
+        });
+    }, 40);
+}
+
+function applyDisplaySettings(settings) {
+    const width = Number(settings.referenceWidth || 3840);
+    const height = Number(settings.referenceHeight || 2160);
+    const resolution = `${width}x${height}`;
+    const picker = document.getElementById("resolutionPicker");
+    if (![...picker.options].some(option => option.value === resolution)) {
+        picker.add(new Option(`${width} × ${height}`, resolution));
+    }
+    picker.value = resolution;
+    document.getElementById("rotationSeconds").value = String(Number(settings.rotationSeconds || 12));
+}
+
+function getDisplaySettings() {
+    const [referenceWidth, referenceHeight] = String(document.getElementById("resolutionPicker").value || "3840x2160")
+        .split("x")
+        .map(Number);
+    return {
+        referenceWidth,
+        referenceHeight,
+        rotationSeconds: Math.max(5, Math.min(300, Number(document.getElementById("rotationSeconds").value || 12)))
+    };
 }
 
 function renderPlanner(plan) {

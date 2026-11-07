@@ -47,11 +47,25 @@
                     <span>Setor</span>
                     <select id="sectorPicker"></select>
                 </label>
+
+                <label class="field">
+                    <span>Resolução da TV</span>
+                    <select id="resolutionPicker">
+                        <option value="3840x2160">4K (3840 × 2160)</option>
+                        <option value="1920x1080">Full HD (1920 × 1080)</option>
+                    </select>
+                </label>
+
+                <label class="field">
+                    <span>Rotação (segundos)</span>
+                    <input id="rotationSeconds" type="number" min="5" max="300" value="12">
+                </label>
             </div>
 
             <div class="toolbar-actions">
                 <button id="btnRefresh" class="btn btn-secondary" type="button">Atualizar</button>
                 <button id="btnSaveMonth" class="btn btn-primary" type="button">Salvar mes</button>
+                <button id="btnPreview" class="btn btn-secondary" type="button">Pré-visualizar TV</button>
                 <button id="btnExport" class="btn btn-secondary" type="button">Exportar HTML TV</button>
             </div>
         </section>

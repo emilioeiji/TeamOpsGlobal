@@ -50,6 +50,7 @@ namespace TeamOps.UI.Services
                         Id,
                         COALESCE(NULLIF(NamePt, ''), NULLIF(NameJp, ''), 'Setor ' || Id) AS Name
                     FROM Sectors
+                    WHERE IsActive = 1
                     ORDER BY Id;")
                 .ToList();
 
@@ -59,9 +60,13 @@ namespace TeamOps.UI.Services
                         Id,
                         SectorId,
                         COALESCE(NULLIF(NamePt, ''), NULLIF(NameJp, ''), 'Local ' || Id) AS Name,
-                        COALESCE(NULLIF(ShortCode, ''), NULLIF(NamePt, ''), NULLIF(NameJp, ''), 'L' || Id) AS ShortCode
+                        COALESCE(NULLIF(ShortCode, ''), NULLIF(NamePt, ''), NULLIF(NameJp, ''), 'L' || Id) AS ShortCode,
+                        HaidaiAreaId,
+                        COALESCE(SortOrder, 0) AS SortOrder,
+                        COALESCE(IsActive, 1) AS IsActive
                     FROM Locals
-                    ORDER BY SectorId, Id;")
+                    WHERE COALESCE(IsActive, 1) = 1
+                    ORDER BY SectorId, SortOrder, Id;")
                 .ToList();
 
             var operators = conn.Query<HaidaiOperatorLookup>(
@@ -335,9 +340,12 @@ namespace TeamOps.UI.Services
                         Id,
                         SectorId,
                         COALESCE(NULLIF(NamePt, ''), NULLIF(NameJp, ''), 'Local ' || Id) AS Name,
-                        COALESCE(NULLIF(ShortCode, ''), NULLIF(NamePt, ''), NULLIF(NameJp, ''), 'L' || Id) AS ShortCode
+                        COALESCE(NULLIF(ShortCode, ''), NULLIF(NamePt, ''), NULLIF(NameJp, ''), 'L' || Id) AS ShortCode,
+                        HaidaiAreaId,
+                        COALESCE(SortOrder, 0) AS SortOrder,
+                        COALESCE(IsActive, 1) AS IsActive
                     FROM Locals
-                    WHERE SectorId IN @SectorIds;",
+                    WHERE SectorId IN @SectorIds AND COALESCE(IsActive, 1) = 1;",
                 new
                 {
                     SectorIds = localSectorIds
@@ -719,9 +727,12 @@ namespace TeamOps.UI.Services
                         Id,
                         SectorId,
                         COALESCE(NULLIF(NamePt, ''), NULLIF(NameJp, ''), 'Local ' || Id) AS Name,
-                        COALESCE(NULLIF(ShortCode, ''), NULLIF(NamePt, ''), NULLIF(NameJp, ''), 'L' || Id) AS ShortCode
+                        COALESCE(NULLIF(ShortCode, ''), NULLIF(NamePt, ''), NULLIF(NameJp, ''), 'L' || Id) AS ShortCode,
+                        HaidaiAreaId,
+                        COALESCE(SortOrder, 0) AS SortOrder,
+                        COALESCE(IsActive, 1) AS IsActive
                     FROM Locals
-                    ORDER BY Id;",
+                    ORDER BY SectorId, SortOrder, Id;",
                 new { })
                 .ToList();
 
@@ -995,13 +1006,92 @@ namespace TeamOps.UI.Services
                 .Select(group => new HaidaiAreaTotal(group.Key, group.Count()))
                 .ToList();
 
+            var displayAreas = BuildDisplayAreas(conn, sectorId, allLocals, rows);
+
             return new HaidaiBoardPayload(
                 date.ToString("yyyy-MM-dd"),
                 shiftId,
                 sectorId,
                 summary,
                 grouped,
-                areaTotals);
+                areaTotals,
+                displayAreas);
+        }
+
+        private static IReadOnlyList<HaidaiDisplayArea> BuildDisplayAreas(
+            System.Data.IDbConnection conn,
+            int sectorId,
+            IReadOnlyList<HaidaiLocalLookup> allLocals,
+            IReadOnlyList<HaidaiBoardRow> rows)
+        {
+            var areaRows = conn.Query<HaidaiDisplayAreaRow>(@"
+                SELECT Id, SectorId, Code, NamePt, NameJp, SortOrder
+                FROM HaidaiAreas
+                WHERE SectorId = @sectorId AND IsActive = 1
+                ORDER BY SortOrder, Id;", new { sectorId }).ToList();
+
+            var activeLocals = allLocals
+                .Where(local => local.SectorId == sectorId && local.IsActive)
+                .OrderBy(local => local.SortOrder)
+                .ThenBy(local => local.Id)
+                .ToList();
+
+            var assignedByLocal = rows
+                .Where(row => row.IsLineupActive && !string.IsNullOrWhiteSpace(row.AssignmentCode))
+                .Where(row => (row.DisplayLocalSectorId ?? row.LocalSectorId) == sectorId)
+                .Where(row => row.DisplayLocalId.HasValue || row.LocalId.HasValue)
+                .GroupBy(row => row.DisplayLocalId ?? row.LocalId!.Value)
+                .ToDictionary(
+                    group => group.Key,
+                    group => (IReadOnlyList<HaidaiBoardRow>)group
+                        .OrderBy(row => row.PairKey, StringComparer.OrdinalIgnoreCase)
+                        .ThenBy(row => row.Name, StringComparer.OrdinalIgnoreCase)
+                        .ToList());
+
+            var result = areaRows.Select(area => new HaidaiDisplayArea(
+                area.Id,
+                area.Code,
+                area.NamePt,
+                area.NameJp,
+                area.SortOrder,
+                activeLocals
+                    .Where(local => local.HaidaiAreaId == area.Id)
+                    .Select(local => new HaidaiDisplayLocation(
+                        local.Id,
+                        local.Name,
+                        local.ShortCode,
+                        local.SortOrder,
+                        assignedByLocal.TryGetValue(local.Id, out var assigned)
+                            ? assigned
+                            : Array.Empty<HaidaiBoardRow>()))
+                    .ToList()))
+                .ToList();
+
+            foreach (var local in activeLocals.Where(local => !local.HaidaiAreaId.HasValue))
+            {
+                result.Add(new HaidaiDisplayArea(
+                    -local.Id,
+                    local.ShortCode,
+                    local.Name,
+                    local.Name,
+                    local.SortOrder,
+                    new[]
+                    {
+                        new HaidaiDisplayLocation(
+                            local.Id,
+                            local.Name,
+                            local.ShortCode,
+                            local.SortOrder,
+                            assignedByLocal.TryGetValue(local.Id, out var assigned)
+                                ? assigned
+                                : Array.Empty<HaidaiBoardRow>())
+                    }));
+            }
+
+            return result
+                .OrderBy(area => area.SortOrder)
+                .ThenBy(area => area.Id)
+                .ToList();
         }
 
         public void SaveAssignment(
@@ -1695,14 +1785,14 @@ namespace TeamOps.UI.Services
         public HaidaiExportResult ExportSector(
             DateTime date,
             int sectorId,
-            IReadOnlyCollection<int>? authorizedSectorIds = null)
+            IReadOnlyCollection<int>? authorizedSectorIds = null,
+            HaidaiDisplaySettings? requestedDisplaySettings = null)
         {
             RefreshSectorTopology();
 
             var exportDirectory = StoragePathResolver.GetRequiredPath("HaidaiExportDirectory");
 
             Directory.CreateDirectory(exportDirectory);
-            CopyHaidaiExportAssets(exportDirectory);
 
             using var conn = _factory.CreateOpenConnection();
 
@@ -1730,6 +1820,9 @@ namespace TeamOps.UI.Services
                 .ToList();
 
             var generatedFiles = new List<string>();
+            var displaySettings = requestedDisplaySettings ?? GetDisplaySettings(sectorId);
+            ValidateDisplaySettings(displaySettings, sectorId);
+            var assetRoot = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ui", "presence", "assets");
 
             for (var i = 0; i < shifts.Count; i++)
             {
@@ -1740,12 +1833,13 @@ namespace TeamOps.UI.Services
                     ? BuildExportFileName(sector.Name, shifts[(i + 1) % shifts.Count].Name)
                     : currentFile;
 
-                var html = BuildExportHtml(
-                    sectorId,
+                var html = HaidaiHtmlRenderer.Render(
                     sector.Name,
                     shift.Name,
                     otherFile,
-                    board);
+                    board,
+                    displaySettings,
+                    assetRoot);
 
                 var fullPath = Path.Combine(exportDirectory, currentFile);
                 File.WriteAllText(fullPath, html, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
@@ -1753,6 +1847,73 @@ namespace TeamOps.UI.Services
             }
 
             return new HaidaiExportResult(exportDirectory, generatedFiles);
+        }
+
+        public HaidaiDisplaySettings GetDisplaySettings(int sectorId)
+        {
+            using var conn = _factory.CreateOpenConnection();
+            return conn.QuerySingleOrDefault<HaidaiDisplaySettings>(@"
+                SELECT SectorId, ReferenceWidth, ReferenceHeight, RotationSeconds
+                FROM HaidaiDisplaySettings
+                WHERE SectorId = @sectorId;", new { sectorId })
+                ?? HaidaiDisplaySettings.Default(sectorId);
+        }
+
+        public void SaveDisplaySettings(HaidaiDisplaySettings settings)
+        {
+            ValidateDisplaySettings(settings, settings.SectorId);
+
+            using var conn = _factory.CreateOpenConnection();
+            conn.Execute(@"
+                INSERT INTO HaidaiDisplaySettings
+                    (SectorId, ReferenceWidth, ReferenceHeight, RotationSeconds, UpdatedAt)
+                VALUES
+                    (@SectorId, @ReferenceWidth, @ReferenceHeight, @RotationSeconds, CURRENT_TIMESTAMP)
+                ON CONFLICT(SectorId) DO UPDATE SET
+                    ReferenceWidth = excluded.ReferenceWidth,
+                    ReferenceHeight = excluded.ReferenceHeight,
+                    RotationSeconds = excluded.RotationSeconds,
+                    UpdatedAt = CURRENT_TIMESTAMP;", settings);
+        }
+
+        private static void ValidateDisplaySettings(HaidaiDisplaySettings settings, int sectorId)
+        {
+            if (settings.SectorId != sectorId)
+                throw new InvalidOperationException("A configuracao de exibicao nao pertence ao setor selecionado.");
+            if (settings.ReferenceWidth is < 1280 or > 7680
+                || settings.ReferenceHeight is < 720 or > 4320)
+                throw new InvalidOperationException("Resolucao de referencia invalida.");
+            if (settings.RotationSeconds is < 5 or > 300)
+                throw new InvalidOperationException("O tempo de rotacao deve ficar entre 5 e 300 segundos.");
+        }
+
+        public HaidaiPreviewResult CreatePreview(
+            DateTime date,
+            int shiftId,
+            int sectorId,
+            IReadOnlyCollection<int>? authorizedSectorIds = null,
+            HaidaiDisplaySettings? requestedDisplaySettings = null)
+        {
+            using var conn = _factory.CreateOpenConnection();
+            var sectorName = conn.ExecuteScalar<string?>(@"
+                SELECT COALESCE(NULLIF(NamePt, ''), NULLIF(NameJp, ''), 'Setor ' || Id)
+                FROM Sectors WHERE Id = @sectorId AND IsActive = 1;", new { sectorId })
+                ?? throw new InvalidOperationException("Setor nao encontrado para visualizacao.");
+            var shiftName = conn.ExecuteScalar<string?>(@"
+                SELECT COALESCE(NULLIF(NamePt, ''), NULLIF(NameJp, ''), 'Turno ' || Id)
+                FROM Shifts WHERE Id = @shiftId;", new { shiftId })
+                ?? throw new InvalidOperationException("Turno nao encontrado para visualizacao.");
+
+            var board = GetBoard(date, shiftId, sectorId, authorizedSectorIds);
+            var settings = requestedDisplaySettings ?? GetDisplaySettings(sectorId);
+            ValidateDisplaySettings(settings, sectorId);
+            var assetRoot = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ui", "presence", "assets");
+            var html = HaidaiHtmlRenderer.Render(sectorName, shiftName, "#", board, settings, assetRoot);
+            var directory = Path.Combine(Path.GetTempPath(), "TeamOps", "HaidaiPreview");
+            Directory.CreateDirectory(directory);
+            var file = Path.Combine(directory, $"haidai-preview-{sectorId}-{shiftId}.html");
+            File.WriteAllText(file, html, new UTF8Encoding(false));
+            return new HaidaiPreviewResult(file, settings.ReferenceWidth, settings.ReferenceHeight);
         }
 
         private static string ResolveAssignmentCode(HaidaiAssignmentRecord? assignment, HaidaiLocalLookup? local)
@@ -3880,6 +4041,9 @@ namespace TeamOps.UI.Services
         public int SectorId { get; set; }
         public string Name { get; set; } = string.Empty;
         public string ShortCode { get; set; } = string.Empty;
+        public int? HaidaiAreaId { get; set; }
+        public int SortOrder { get; set; }
+        public bool IsActive { get; set; } = true;
     }
 
     public sealed class HaidaiOperatorLookup
@@ -3943,7 +4107,26 @@ namespace TeamOps.UI.Services
         int SectorId,
         HaidaiSummary Summary,
         IReadOnlyList<HaidaiGroupBlock> Groups,
-        IReadOnlyList<HaidaiAreaTotal> AreaTotals);
+        IReadOnlyList<HaidaiAreaTotal> AreaTotals,
+        IReadOnlyList<HaidaiDisplayArea> Areas);
+
+    public sealed record HaidaiDisplayArea(
+        int Id,
+        string Code,
+        string NamePt,
+        string NameJp,
+        int SortOrder,
+        IReadOnlyList<HaidaiDisplayLocation> Locations)
+    {
+        public int OperatorCount => Locations.Sum(location => location.Operators.Count);
+    }
+
+    public sealed record HaidaiDisplayLocation(
+        int Id,
+        string Name,
+        string ShortCode,
+        int SortOrder,
+        IReadOnlyList<HaidaiBoardRow> Operators);
 
     public sealed record HaidaiSummary(
         int OperatorCount,
@@ -4042,6 +4225,7 @@ namespace TeamOps.UI.Services
         string CreatedByCodigoFJ);
 
     public sealed record HaidaiExportResult(string Directory, IReadOnlyList<string> Files);
+    public sealed record HaidaiPreviewResult(string FilePath, int ReferenceWidth, int ReferenceHeight);
     public sealed class HaidaiPlannedAssignment
     {
         public string OperatorCodigoFJ { get; set; } = string.Empty;
@@ -4066,6 +4250,16 @@ namespace TeamOps.UI.Services
         public bool Trainer { get; set; }
         public bool IsLeader { get; set; }
         public string ProfileCode { get; set; } = string.Empty;
+    }
+
+    internal sealed class HaidaiDisplayAreaRow
+    {
+        public int Id { get; set; }
+        public int SectorId { get; set; }
+        public string Code { get; set; } = string.Empty;
+        public string NamePt { get; set; } = string.Empty;
+        public string NameJp { get; set; } = string.Empty;
+        public int SortOrder { get; set; }
     }
 
     internal sealed class HaidaiOperatorSectorRow

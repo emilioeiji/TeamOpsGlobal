@@ -148,6 +148,14 @@ namespace TeamOps.UI.Forms
                     case "export_html":
                         ExportHtml(root);
                         break;
+
+                    case "preview_html":
+                        PreviewHtml(root);
+                        break;
+
+                    case "load_display_settings":
+                        SendDisplaySettings(ReadInt(root, "sectorId"));
+                        break;
                 }
             }
             catch (Exception ex)
@@ -195,6 +203,7 @@ namespace TeamOps.UI.Forms
                         shiftId = init.ShiftId,
                         sectorId = init.SectorId
                     },
+                    displaySettings = ToDisplaySettingsPayload(_service.GetDisplaySettings(init.SectorId)),
                     shifts = init.Shifts.Select(item => new { id = item.Id, name = item.Name }),
                     sectors = init.Sectors
                         .Where(item => authorizedSectorIds.Contains(item.Id))
@@ -545,10 +554,13 @@ namespace TeamOps.UI.Forms
         {
             var sectorId = ReadInt(root, "sectorId");
             Demand(PermissionActions.Export, sectorId);
+            var displaySettings = ReadDisplaySettings(root, sectorId);
+            PersistDisplaySettingsWhenAllowed(displaySettings, sectorId);
             var result = _service.ExportSector(
                 ReadDate(root, "date"),
                 sectorId,
-                _authorization.GetContext(_currentUser.Id).AuthorizedSectorIds);
+                _authorization.GetContext(_currentUser.Id).AuthorizedSectorIds,
+                displaySettings);
 
             PostJson(new
             {
@@ -561,6 +573,62 @@ namespace TeamOps.UI.Forms
                 }
             });
         }
+
+        private void PreviewHtml(JsonElement root)
+        {
+            var sectorId = ReadInt(root, "sectorId");
+            Demand(PermissionActions.View, sectorId);
+            var displaySettings = ReadDisplaySettings(root, sectorId);
+            PersistDisplaySettingsWhenAllowed(displaySettings, sectorId);
+            var result = _service.CreatePreview(
+                ReadDate(root, "date"),
+                ReadInt(root, "shiftId"),
+                sectorId,
+                _authorization.GetContext(_currentUser.Id).AuthorizedSectorIds,
+                displaySettings);
+
+            using var preview = new HTMLFormHaidaiPreview(
+                result.FilePath,
+                result.ReferenceWidth,
+                result.ReferenceHeight);
+            preview.ShowDialog(this);
+            PostJson(new { type = "preview_closed" });
+        }
+
+        private void SendDisplaySettings(int sectorId)
+        {
+            Demand(PermissionActions.View, sectorId);
+            PostJson(new
+            {
+                type = "display_settings",
+                data = ToDisplaySettingsPayload(_service.GetDisplaySettings(sectorId))
+            });
+        }
+
+        private static HaidaiDisplaySettings ReadDisplaySettings(JsonElement root, int sectorId)
+        {
+            return new HaidaiDisplaySettings(
+                sectorId,
+                ReadInt(root, "referenceWidth", 3840),
+                ReadInt(root, "referenceHeight", 2160),
+                ReadInt(root, "rotationSeconds", 12));
+        }
+
+        private void PersistDisplaySettingsWhenAllowed(HaidaiDisplaySettings settings, int sectorId)
+        {
+            if (_authorization.IsAllowed(_currentUser.Id, ModuleCodes.Haidai, PermissionActions.Edit, sectorId))
+            {
+                _service.SaveDisplaySettings(settings);
+            }
+        }
+
+        private static object ToDisplaySettingsPayload(HaidaiDisplaySettings settings) => new
+        {
+            sectorId = settings.SectorId,
+            referenceWidth = settings.ReferenceWidth,
+            referenceHeight = settings.ReferenceHeight,
+            rotationSeconds = settings.RotationSeconds
+        };
 
         private void PostNotify(string message)
         {
