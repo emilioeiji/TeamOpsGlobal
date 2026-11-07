@@ -142,9 +142,11 @@ select {
 .filter-actions {
     display: flex;
     align-items: end;
+    gap: 8px;
 }
 
 .btn-primary,
+.btn-secondary,
 .btn-attach {
     min-height: 40px;
     padding: 0 16px;
@@ -158,6 +160,15 @@ select {
     transition: transform var(--transition-fast), background-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
+.btn-secondary {
+    background: #5a6b80;
+}
+
+.btn-secondary:hover {
+    background: #42556d;
+    box-shadow: 0 10px 20px rgba(66, 85, 109, 0.2);
+}
+
 .btn-primary:hover,
 .btn-attach:hover {
     background: var(--color-primary-hover);
@@ -165,6 +176,7 @@ select {
 }
 
 .btn-primary:active,
+.btn-secondary:active,
 .btn-attach:active {
     transform: scale(0.97);
 }

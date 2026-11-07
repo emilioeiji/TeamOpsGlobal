@@ -83,10 +83,37 @@ namespace TeamOps.Data.Repositories
             DateTime start,
             DateTime end,
             int userId,
+            int selectedLocalId) => GetForOperator(start, end, userId, 0, selectedLocalId);
+
+        public List<HikitsuguiListItem> GetForOperator(
+            DateTime start,
+            DateTime end,
+            int userId,
+            int selectedSectorId,
+            int selectedLocalId)
+            => GetForOperatorCore(start, end, userId, null, selectedSectorId, selectedLocalId);
+
+        public List<HikitsuguiListItem> GetForOperator(
+            DateTime start,
+            DateTime end,
+            int userId,
+            string codigoFJ,
+            int selectedSectorId,
+            int selectedLocalId)
+            => GetForOperatorCore(start, end, userId, codigoFJ, selectedSectorId, selectedLocalId);
+
+        private List<HikitsuguiListItem> GetForOperatorCore(
+            DateTime start,
+            DateTime end,
+            int userId,
+            string? codigoFJ,
+            int selectedSectorId,
             int selectedLocalId)
         {
-            var visibleIds = new HikitsuguiAudienceService(_factory)
-                .GetVisibleMessageIds(userId, start, end);
+            var audienceService = new HikitsuguiAudienceService(_factory);
+            var visibleIds = string.IsNullOrWhiteSpace(codigoFJ)
+                ? audienceService.GetVisibleMessageIds(userId, start, end)
+                : audienceService.GetVisibleMessageIdsForOperator(userId, codigoFJ, start, end);
             if (visibleIds.Count == 0)
                 return [];
 
@@ -100,7 +127,7 @@ namespace TeamOps.Data.Repositories
                 INNER JOIN Categories c ON c.Id = h.CategoryId
                 LEFT JOIN Operators o ON o.CodigoFJ = h.CreatorCodigoFJ
                 WHERE h.Date >= @start AND h.Date < @end
-                  AND (h.LocalId = @localId OR h.LocalId IS NULL)
+                  AND (@localId = 0 OR h.LocalId = @localId OR h.LocalId IS NULL)
                 ORDER BY h.Date DESC;";
             cmd.Parameters.AddWithValue("@localId", selectedLocalId);
             cmd.Parameters.AddWithValue("@start", start);
@@ -110,6 +137,8 @@ namespace TeamOps.Data.Repositories
             {
                 var messageId = reader.GetInt32(0);
                 if (!visibleIds.Contains(messageId))
+                    continue;
+                if (selectedSectorId > 0 && !audienceService.IsTargetedToSector(messageId, selectedSectorId))
                     continue;
                 result.Add(new HikitsuguiListItem
                 {

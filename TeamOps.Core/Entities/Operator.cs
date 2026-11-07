@@ -22,6 +22,7 @@
         public bool Status { get; set; } = true;
         public DateTime CreatedAt { get; set; } = DateTime.Now;
         public bool IsLeader { get; set; }
+        public string OperatorType { get; set; } = "Regular";
 
         public string? Telefone { get; set; }
         public string? Endereco { get; set; }

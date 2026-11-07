@@ -89,7 +89,8 @@ namespace TeamOps.Data.Db
             new(9, "Haidai sector topology", "TeamOps.Data.Migrations.V2_0009_HaidaiSectorTopology.sql"),
             new(10, "Sector capabilities", "TeamOps.Data.Migrations.V2_0010_SectorCapabilities.sql"),
             new(11, "Security integrity", "TeamOps.Data.Migrations.V2_0011_SecurityIntegrity.sql"),
-            new(12, "Dynamic Haidai display", "TeamOps.Data.Migrations.V2_0012_HaidaiDynamicDisplay.sql")
+            new(12, "Dynamic Haidai display", "TeamOps.Data.Migrations.V2_0012_HaidaiDynamicDisplay.sql"),
+            new(13, "Operator identity and Hikitsugui profile audiences", "TeamOps.Data.Migrations.V2_0013_OperatorIdentityAndHikitsuguiProfiles.sql")
         ];
 
         private static void DemandCleanOrVersionedDatabase(SqliteConnection conn)

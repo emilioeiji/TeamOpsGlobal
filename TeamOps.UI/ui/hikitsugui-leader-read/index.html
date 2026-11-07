@@ -169,6 +169,30 @@
                 </div>
             </div>
 
+            <div class="form-grid mt-4">
+                <div class="form-group">
+                    <label id="txtEditAudienceTypeLabel">Audiência territorial</label>
+                    <select id="editAudienceType" class="input">
+                        <option value="sector">Setor(es)</option>
+                        <option value="organization">Unidade organizacional</option>
+                        <option value="general">Toda a organização</option>
+                    </select>
+                </div>
+                <div id="editAudienceSectorsField" class="form-group">
+                    <label id="txtEditAudienceSectorsLabel">Setores destinatários</label>
+                    <select id="editAudienceSectorIds" class="input" multiple></select>
+                </div>
+                <div id="editAudienceOrganizationField" class="form-group hidden">
+                    <label id="txtEditAudienceOrganizationLabel">Unidade destinatária</label>
+                    <select id="editAudienceOrganizationNodeId" class="input"></select>
+                </div>
+            </div>
+
+            <div class="form-group mt-4">
+                <label id="txtEditAudienceProfilesLabel">Perfis autorizados a visualizar</label>
+                <div id="editAudienceProfiles" class="audience-profile-grid" role="group"></div>
+            </div>
+
             <div class="form-group mt-4">
                 <label id="txtEditDescriptionLabel">Descrição</label>
 

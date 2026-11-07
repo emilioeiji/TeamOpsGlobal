@@ -144,6 +144,7 @@ namespace TeamOps.UI.Forms
 
             var organizationNodes = _audienceService
                 .GetTargetableOrganizationUnits(_currentUser.Id);
+            var profileOptions = _audienceService.GetProfileOptions();
 
             var activeSectorIds = conn.Query<int>("SELECT Id FROM Sectors WHERE IsActive = 1;").ToArray();
             var canTargetGeneral = activeSectorIds.Length > 0
@@ -159,6 +160,7 @@ namespace TeamOps.UI.Forms
                 locals,
                 sectors,
                 organizationNodes,
+                profileOptions,
                 canTargetGeneral,
                 shiftId = _currentOperator.ShiftId,
                 creatorCodigoFJ = _currentOperator.CodigoFJ,
@@ -221,6 +223,8 @@ namespace TeamOps.UI.Forms
                     default:
                         throw new InvalidOperationException("Tipo de audiencia invalido.");
                 }
+
+                _audienceService.SetProfileAudience(_currentUser.Id, newId, msg.profileCodes);
             }
             catch
             {

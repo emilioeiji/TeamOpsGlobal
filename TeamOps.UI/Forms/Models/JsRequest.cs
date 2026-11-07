@@ -94,6 +94,8 @@
         public string profileCode { get; set; } = string.Empty;
         public int referenceNodeId { get; set; }
         public List<int> sectorIds { get; set; } = new();
+        public List<string> profileCodes { get; set; } = new();
+        public string operatorType { get; set; } = "Regular";
         public bool isActive { get; set; } = true;
         public List<ModulePermissionDto> permissions { get; set; } = new();
 

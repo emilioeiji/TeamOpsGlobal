@@ -20,6 +20,7 @@ namespace TeamOps.Data.Security
             DemandCanCreateForSectors(actorUserId, targets);
 
             ReplaceAudience(hikitsuguiId, "Sector", targets, null);
+            EnsureDefaultProfileAudience(hikitsuguiId);
         }
 
         public void DemandCanCreateForSectors(int actorUserId, IEnumerable<int> sectorIds)
@@ -43,6 +44,7 @@ namespace TeamOps.Data.Security
 
             DemandAllSectors(actorUserId, PermissionActions.Create, targetSectors);
             ReplaceAudience(hikitsuguiId, "Organization", [], organizationNodeId);
+            EnsureDefaultProfileAudience(hikitsuguiId);
         }
 
         public void SetGeneralAudience(int actorUserId, int hikitsuguiId)
@@ -55,6 +57,76 @@ namespace TeamOps.Data.Security
 
             DemandAllSectors(actorUserId, PermissionActions.Create, targetSectors);
             ReplaceAudience(hikitsuguiId, "General", [], null);
+            EnsureDefaultProfileAudience(hikitsuguiId);
+        }
+
+        public IReadOnlyList<HikitsuguiProfileAudienceOption> GetProfileOptions()
+        {
+            using var conn = _factory.CreateOpenConnection();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT Code,
+                       CASE Code WHEN 'MANAGER' THEN 'MA' WHEN 'DIRECTOR' THEN 'Diretor' ELSE Code END,
+                       NameJp
+                FROM AccessProfiles
+                WHERE IsActive = 1
+                ORDER BY HierarchyRank;";
+            using var reader = cmd.ExecuteReader();
+            var result = new List<HikitsuguiProfileAudienceOption>();
+            while (reader.Read()) result.Add(new(reader.GetString(0), reader.GetString(1), reader.GetString(2)));
+            return result;
+        }
+
+        public IReadOnlySet<string> GetProfileAudience(int hikitsuguiId)
+        {
+            using var conn = _factory.CreateOpenConnection();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT p.Code
+                FROM HikitsuguiAudienceProfiles audience
+                JOIN AccessProfiles p ON p.Id = audience.ProfileId AND p.IsActive = 1
+                WHERE audience.HikitsuguiId = @id;";
+            cmd.Parameters.AddWithValue("@id", hikitsuguiId);
+            using var reader = cmd.ExecuteReader();
+            var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            while (reader.Read()) result.Add(reader.GetString(0));
+            return result;
+        }
+
+        public void SetProfileAudience(int actorUserId, int hikitsuguiId, IEnumerable<string> profileCodes)
+        {
+            DemandCanEdit(actorUserId, hikitsuguiId);
+            var codes = profileCodes.Select(NormalizeProfileCode)
+                .Where(code => code.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            if (codes.Length == 0)
+                throw new InvalidOperationException("Selecione ao menos um perfil para a audiencia.");
+
+            using var conn = _factory.CreateOpenConnection();
+            using var transaction = conn.BeginTransaction();
+            using (var delete = conn.CreateCommand())
+            {
+                delete.Transaction = transaction;
+                delete.CommandText = "DELETE FROM HikitsuguiAudienceProfiles WHERE HikitsuguiId = @id;";
+                delete.Parameters.AddWithValue("@id", hikitsuguiId);
+                delete.ExecuteNonQuery();
+            }
+
+            foreach (var code in codes)
+            {
+                using var insert = conn.CreateCommand();
+                insert.Transaction = transaction;
+                insert.CommandText = @"
+                    INSERT INTO HikitsuguiAudienceProfiles (HikitsuguiId, ProfileId)
+                    SELECT @hikitsuguiId, Id FROM AccessProfiles
+                    WHERE Code = @code COLLATE NOCASE AND IsActive = 1;";
+                insert.Parameters.AddWithValue("@hikitsuguiId", hikitsuguiId);
+                insert.Parameters.AddWithValue("@code", code);
+                if (insert.ExecuteNonQuery() != 1)
+                    throw new InvalidOperationException($"Perfil de audiencia invalido: {code}.");
+            }
+            transaction.Commit();
         }
 
         public IReadOnlyList<HikitsuguiOrganizationAudienceOption> GetTargetableOrganizationUnits(int actorUserId)
@@ -118,7 +190,7 @@ namespace TeamOps.Data.Security
             if (audience.Count == 0)
                 return false;
 
-            return audience[0].Type switch
+            var sectorAllowed = audience[0].Type switch
             {
                 "Sector" => audience.Any(item => item.SectorId.HasValue
                     && context.AuthorizedSectorIds.Contains(item.SectorId.Value)),
@@ -127,12 +199,50 @@ namespace TeamOps.Data.Security
                 "General" => context.AuthorizedSectorIds.Count > 0,
                 _ => false
             };
+            return sectorAllowed && GetProfileAudience(hikitsuguiId).Contains(context.ProfileCode);
         }
 
         public void DemandCanView(int userId, int hikitsuguiId)
         {
             if (!CanView(userId, hikitsuguiId))
                 throw new UnauthorizedAccessException("Hikitsugui fora do escopo autorizado.");
+        }
+
+        public bool CanViewForOperator(int userId, string codigoFJ, int hikitsuguiId)
+        {
+            if (!CanView(userId, hikitsuguiId) || string.IsNullOrWhiteSpace(codigoFJ))
+                return false;
+
+            using var conn = _factory.CreateOpenConnection();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT assignment.SectorId
+                FROM OperatorSectorAssignments assignment
+                JOIN Operators o ON o.CodigoFJ = assignment.OperatorCodigoFJ
+                                AND o.Status = 1
+                WHERE assignment.OperatorCodigoFJ = @fj COLLATE NOCASE;";
+            cmd.Parameters.AddWithValue("@fj", codigoFJ.Trim());
+            using var reader = cmd.ExecuteReader();
+            var sectorIds = new List<int>();
+            while (reader.Read()) sectorIds.Add(reader.GetInt32(0));
+            return sectorIds.Any(sectorId => IsTargetedToSector(hikitsuguiId, sectorId));
+        }
+
+        public void DemandCanViewForOperator(int userId, string codigoFJ, int hikitsuguiId)
+        {
+            if (!CanViewForOperator(userId, codigoFJ, hikitsuguiId))
+                throw new UnauthorizedAccessException("Hikitsugui fora do perfil ou dos setores associados ao operador.");
+        }
+
+        public IReadOnlySet<int> GetVisibleMessageIdsForOperator(
+            int userId,
+            string codigoFJ,
+            DateTime start,
+            DateTime end)
+        {
+            return GetVisibleMessageIds(userId, start, end)
+                .Where(id => CanViewForOperator(userId, codigoFJ, id))
+                .ToHashSet();
         }
 
         public void DemandCanEdit(int userId, int hikitsuguiId)
@@ -227,6 +337,31 @@ namespace TeamOps.Data.Security
             transaction.Commit();
         }
 
+        private void EnsureDefaultProfileAudience(int hikitsuguiId)
+        {
+            using var conn = _factory.CreateOpenConnection();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                INSERT OR IGNORE INTO HikitsuguiAudienceProfiles (HikitsuguiId, ProfileId)
+                SELECT @id, Id FROM AccessProfiles WHERE IsActive = 1
+                AND NOT EXISTS (
+                    SELECT 1 FROM HikitsuguiAudienceProfiles WHERE HikitsuguiId = @id
+                );";
+            cmd.Parameters.AddWithValue("@id", hikitsuguiId);
+            cmd.ExecuteNonQuery();
+        }
+
+        private static string NormalizeProfileCode(string? code)
+        {
+            var normalized = (code ?? string.Empty).Trim().ToUpperInvariant();
+            return normalized switch
+            {
+                "MA" => "MANAGER",
+                "DIRETOR" => "DIRECTOR",
+                _ => normalized
+            };
+        }
+
         private List<AudienceRow> GetAudience(int hikitsuguiId)
         {
             var result = new List<AudienceRow>();
@@ -292,4 +427,6 @@ namespace TeamOps.Data.Security
         string Code,
         string NamePt,
         string NameJp);
+
+    public sealed record HikitsuguiProfileAudienceOption(string Code, string NamePt, string NameJp);
 }

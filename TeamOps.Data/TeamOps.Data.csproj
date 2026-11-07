@@ -26,6 +26,7 @@
     <EmbeddedResource Include="Migrations\V2_0010_SectorCapabilities.sql" />
     <EmbeddedResource Include="Migrations\V2_0011_SecurityIntegrity.sql" />
     <EmbeddedResource Include="Migrations\V2_0012_HaidaiDynamicDisplay.sql" />
+    <EmbeddedResource Include="Migrations\V2_0013_OperatorIdentityAndHikitsuguiProfiles.sql" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,5 +1,9 @@
 const txtFJ = document.getElementById("txtFJ");
 const txtNome = document.getElementById("txtNome");
+const txtPassword = document.getElementById("txtPassword");
+const btnAcessar = document.getElementById("btnAcessar");
+const btnSair = document.getElementById("btnSair");
+const cboSector = document.getElementById("cboSector");
 const cboLocal = document.getElementById("cboLocal");
 const dtInicial = document.getElementById("dtInicial");
 const dtFinal = document.getElementById("dtFinal");
@@ -12,9 +16,9 @@ const btnCloseModal = document.getElementById("btnCloseModal");
 const modalBody = document.getElementById("modalBody");
 const attachmentList = document.getElementById("attachmentList");
 
-let fjTimer = null;
 let currentFJ = "";
 let currentRows = [];
+let currentLocals = [];
 
 window.addEventListener("DOMContentLoaded", () => {
     applyDefaultDates();
@@ -23,8 +27,14 @@ window.addEventListener("DOMContentLoaded", () => {
 
 function bindEvents() {
     txtFJ.addEventListener("input", handleFjInput);
+    btnAcessar.addEventListener("click", authenticateOperator);
+    btnSair.addEventListener("click", logoutOperator);
+    txtPassword.addEventListener("keydown", event => {
+        if (event.key === "Enter") authenticateOperator();
+    });
     btnFiltrar.addEventListener("click", runFilter);
     cboLocal.addEventListener("change", handleLocalChange);
+    cboSector.addEventListener("change", handleSectorChange);
     btnCloseModal.addEventListener("click", closeModal);
 
     document.addEventListener("click", event => {
@@ -45,34 +55,44 @@ function applyDefaultDates() {
 
 function handleFjInput() {
     txtFJ.value = txtFJ.value.toUpperCase();
-    clearTimeout(fjTimer);
+    if (currentFJ && txtFJ.value.trim() !== currentFJ) {
+        send("logout");
+        resetOperatorState(false);
+    }
+}
 
-    fjTimer = setTimeout(() => {
-        const fj = txtFJ.value.trim();
+function authenticateOperator() {
+    const fj = txtFJ.value.trim();
+    const password = txtPassword.value;
+    if (fj.length < 4 || !password) {
+        setStatus("Informe o codigo FJ e a senha.");
+        return;
+    }
+    setStatus("Autenticando operador...");
+    send("load_operator", { fj, password });
+}
 
-        if (fj.length < 4) {
-            resetOperatorState(true);
-            setStatus("Informe ao menos 4 caracteres do codigo FJ.");
-            return;
-        }
-
-        setStatus("Buscando operador...");
-        send("load_operator", { fj });
-    }, 220);
+function logoutOperator() {
+    send("logout");
+    resetOperatorState(true);
+    txtPassword.value = "";
+    setStatus("Sessao encerrada. Informe o codigo FJ e a senha.");
 }
 
 function handleLocalChange() {
     if (!currentFJ) return;
 
     const localId = Number(cboLocal.value || 0);
-    if (localId <= 0) return;
+    if (localId > 0) {
+        send("register_presence", { localId });
+    }
 
-    send("register_presence", {
-        fj: currentFJ,
-        localId
-    });
+    setStatus(localId > 0 ? "Presenca confirmada. Carregando hikitsugui..." : "Carregando hikitsugui...");
+    runFilter();
+}
 
-    setStatus("Presenca confirmada. Carregando hikitsugui...");
+function handleSectorChange() {
+    fillLocalOptions();
     runFilter();
 }
 
@@ -83,17 +103,13 @@ function runFilter() {
     }
 
     const localId = Number(cboLocal.value || 0);
-    if (localId <= 0) {
-        setStatus("Selecione a area para continuar.");
-        return;
-    }
 
     setStatus("Carregando hikitsugui...");
 
     send("filter", {
-        fj: currentFJ,
         dtInicial: dtInicial.value,
         dtFinal: dtFinal.value,
+        sectorId: Number(cboSector.value || 0),
         localId
     });
 }
@@ -102,9 +118,10 @@ window.chrome.webview.addEventListener("message", event => {
     const msg = event.data;
 
     switch (msg.type) {
-        case "operator_not_found":
-            resetOperatorState(true);
-            setStatus("Operador nao encontrado.");
+        case "authentication_failed":
+            resetOperatorState(false);
+            txtPassword.value = "";
+            setStatus("Codigo FJ ou senha invalidos. Verifique os dados e tente novamente.");
             break;
 
         case "operator_loaded":
@@ -128,28 +145,54 @@ window.chrome.webview.addEventListener("message", event => {
         case "read_status":
             updateReadStatus(msg.data.id, msg.data.lido);
             break;
+
+        case "error":
+            setStatus(msg.data?.message || msg.message || "Nao foi possivel concluir a operacao.");
+            break;
     }
 });
 
 function hydrateOperator(data) {
     currentFJ = data.CodigoFJ;
     txtNome.value = data.NameRomanji || "";
-    cboLocal.innerHTML = `<option value="">Selecione...</option>`;
+    txtPassword.value = "";
+    txtFJ.readOnly = true;
+    btnAcessar.classList.add("hidden");
+    btnSair.classList.remove("hidden");
+    currentLocals = data.locals || [];
 
-    (data.locals || []).forEach(local => {
+    cboSector.disabled = false;
+    cboSector.innerHTML = "";
+    const sectors = data.sectors || [];
+    if (sectors.length > 1) {
+        cboSector.innerHTML = `<option value="0">Todos os setores autorizados</option>`;
+    }
+    sectors.forEach(sector => {
+        const option = document.createElement("option");
+        option.value = sector.Id;
+        option.textContent = sector.NamePt;
+        cboSector.appendChild(option);
+    });
+    if (sectors.length === 1) cboSector.value = String(sectors[0].Id);
+    else cboSector.value = "0";
+
+    fillLocalOptions();
+    runFilter();
+    setStatus(sectors.length > 1
+        ? "Acesso liberado. Selecione um setor ou consulte todos."
+        : "Acesso liberado. Setor selecionado automaticamente.");
+}
+
+function fillLocalOptions() {
+    const sectorId = Number(cboSector.value || 0);
+    const locals = currentLocals.filter(local => sectorId === 0 || Number(local.SectorId) === sectorId);
+    cboLocal.innerHTML = `<option value="0">Todos os locais</option>`;
+    locals.forEach(local => {
         const option = document.createElement("option");
         option.value = local.Id;
         option.textContent = local.NamePt;
         cboLocal.appendChild(option);
     });
-
-    if ((data.locals || []).length === 1) {
-        cboLocal.value = String(data.locals[0].Id);
-        handleLocalChange();
-        return;
-    }
-
-    setStatus("Operador carregado. Selecione a area para confirmar a presenca.");
 }
 
 function renderTable(list) {
@@ -197,7 +240,7 @@ function renderTable(list) {
 }
 
 function openPreview(id) {
-    send("preview", { id, fj: currentFJ });
+    send("preview", { id });
 }
 
 function renderPreview(item) {
@@ -263,10 +306,17 @@ function closeModal() {
 function resetOperatorState(clearFj) {
     if (clearFj) {
         currentFJ = "";
+        txtFJ.value = "";
     }
 
+    txtFJ.readOnly = false;
+    btnAcessar.classList.remove("hidden");
+    btnSair.classList.add("hidden");
     txtNome.value = "";
+    cboSector.disabled = true;
+    cboSector.innerHTML = `<option value="">Autentique-se...</option>`;
     cboLocal.innerHTML = `<option value="">Selecione...</option>`;
+    currentLocals = [];
     currentRows = [];
     renderTable([]);
 }

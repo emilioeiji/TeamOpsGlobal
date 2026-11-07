@@ -45,6 +45,69 @@ public sealed class HikitsuguiAudienceTests
     }
 
     [Fact]
+    public void ProfileAudience_IsExplicitAndDoesNotInheritByHierarchy()
+    {
+        using var context = new DatabaseTestContext();
+        var author = CreateUser(context, "GL", "5552", "DAD");
+        var op = CreateUser(context, "OP", "5552", "DAD");
+        var kl = CreateUser(context, "KL", "5552", "DAD");
+        var gl = CreateUser(context, "GL", "5552", "DAD");
+        var manager = CreateUser(context, "MANAGER", "5552");
+        var supervisor = CreateUser(context, "SV", "5552");
+        var director = CreateUser(context, "DIRECTOR", "5500");
+        var messageId = CreateMessage(context, author);
+        var service = new HikitsuguiAudienceService(context.Factory);
+
+        service.SetSectorAudience(author, messageId, [SectorId(context, "DAD")]);
+        service.SetProfileAudience(author, messageId, ["OP", "GL"]);
+
+        Assert.True(service.CanView(op, messageId));
+        Assert.True(service.CanView(gl, messageId));
+        Assert.False(service.CanView(kl, messageId));
+        Assert.False(service.CanView(manager, messageId));
+        Assert.False(service.CanView(supervisor, messageId));
+        Assert.False(service.CanView(director, messageId));
+        Assert.Throws<UnauthorizedAccessException>(() => service.DemandCanView(manager, messageId));
+    }
+
+    [Fact]
+    public void GlOnlyAudience_IsNotAutomaticallyVisibleToManager()
+    {
+        using var context = new DatabaseTestContext();
+        var gl = CreateUser(context, "GL", "5552", "DAD");
+        var manager = CreateUser(context, "MANAGER", "5552");
+        var messageId = CreateMessage(context, gl);
+        var service = new HikitsuguiAudienceService(context.Factory);
+
+        service.SetSectorAudience(gl, messageId, [SectorId(context, "DAD")]);
+        service.SetProfileAudience(gl, messageId, ["GL"]);
+
+        Assert.True(service.CanView(gl, messageId));
+        Assert.False(service.CanView(manager, messageId));
+    }
+
+    [Fact]
+    public void GlAndManagerAudience_IsVisibleOnlyToThoseExplicitProfiles()
+    {
+        using var context = new DatabaseTestContext();
+        var author = CreateUser(context, "GL", "5552", "DAD");
+        var op = CreateUser(context, "OP", "5552", "DAD");
+        var gl = CreateUser(context, "GL", "5552", "DAD");
+        var manager = CreateUser(context, "MANAGER", "5552");
+        var director = CreateUser(context, "DIRECTOR", "5500");
+        var messageId = CreateMessage(context, author);
+        var service = new HikitsuguiAudienceService(context.Factory);
+
+        service.SetSectorAudience(author, messageId, [SectorId(context, "DAD")]);
+        service.SetProfileAudience(author, messageId, ["GL", "MA"]);
+
+        Assert.False(service.CanView(op, messageId));
+        Assert.True(service.CanView(gl, messageId));
+        Assert.True(service.CanView(manager, messageId));
+        Assert.False(service.CanView(director, messageId));
+    }
+
+    [Fact]
     public void OrganizationAudience_RequiresPublisherToControlEveryDescendantSector()
     {
         using var context = new DatabaseTestContext();

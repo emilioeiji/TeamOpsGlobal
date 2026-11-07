@@ -2,6 +2,8 @@ let editExistingAttachments = [];
 let editNewAttachments = [];
 let currentEditId = null;
 let currentLocale = "pt-BR";
+let profileOptions = [];
+let editAudienceConfiguration = {};
 
 const I18N = {
     "pt-BR": {
@@ -59,6 +61,13 @@ const I18N = {
         editEquipmentLabel: "Equipamento",
         editLocalLabel: "Local",
         editSectorLabel: "Setor",
+        editAudienceProfilesLabel: "Perfis autorizados a visualizar",
+        editAudienceTypeLabel: "Audiência territorial",
+        editAudienceSectorsLabel: "Setores destinatários",
+        editAudienceOrganizationLabel: "Unidade destinatária",
+        validationAudienceSectors: "Selecione ao menos um setor destinatário.",
+        validationAudienceOrganization: "Selecione uma unidade destinatária.",
+        validationAudienceProfiles: "Selecione ao menos um perfil autorizado.",
         editDescriptionLabel: "Descrição",
         editDescriptionPlaceholder: "Descreva aqui...",
         editAttachmentsLabel: "Anexos",
@@ -122,6 +131,13 @@ const I18N = {
         editEquipmentLabel: "設備",
         editLocalLabel: "場所",
         editSectorLabel: "セクター",
+        editAudienceProfilesLabel: "閲覧を許可するプロフィール",
+        editAudienceTypeLabel: "公開範囲",
+        editAudienceSectorsLabel: "対象セクター",
+        editAudienceOrganizationLabel: "対象組織単位",
+        validationAudienceSectors: "対象セクターを1つ以上選択してください。",
+        validationAudienceOrganization: "対象組織単位を選択してください。",
+        validationAudienceProfiles: "閲覧を許可するプロフィールを1つ以上選択してください。",
         editDescriptionLabel: "内容",
         editDescriptionPlaceholder: "ここに入力してください...",
         editAttachmentsLabel: "添付",
@@ -216,6 +232,7 @@ window.addEventListener("DOMContentLoaded", () => {
             renderEditNewFiles();
         });
     }
+    document.getElementById("editAudienceType").addEventListener("change", updateEditAudienceFields);
 });
 
 function initReplyEditor() {
@@ -255,6 +272,13 @@ window.chrome.webview.addEventListener("message", e => {
             fillSelect("editEquipamento", msg.equipments, "Id", getLocaleField("NamePt", "NameJp"), false);
             fillSelect("editLocal", msg.locals, "Id", getLocaleField("NamePt", "NameJp"), false);
             fillSelect("editSector", msg.sectors, "Id", getLocaleField("NamePt", "NameJp"), false);
+            fillSelect("editAudienceSectorIds", msg.sectors, "Id", getLocaleField("NamePt", "NameJp"), false);
+            document.querySelector('#editAudienceSectorIds option[value="0"]')?.remove();
+            fillSelect("editAudienceOrganizationNodeId", msg.organizationNodes || [], "Id", getLocaleField("NamePt", "NameJp"), false);
+            document.querySelector('#editAudienceType option[value="organization"]').disabled = !(msg.organizationNodes || []).length;
+            document.querySelector('#editAudienceType option[value="general"]').disabled = !msg.canTargetGeneral;
+            profileOptions = msg.profileOptions || [];
+            renderEditProfileOptions([]);
             break;
 
         case "hikitsugui_for_leader":
@@ -276,6 +300,9 @@ window.chrome.webview.addEventListener("message", e => {
         case "hikitsugui_edit":
             setTimeout(() => {
                 openEditModal(msg.data[0]);
+                renderEditProfileOptions(msg.profileCodes || []);
+                editAudienceConfiguration = msg;
+                renderEditAudience(msg);
                 renderEditAttachments(msg.attachments);
                 renderEditNewFiles();
             }, 50);
@@ -328,6 +355,10 @@ function applyLocale() {
     document.getElementById("txtEditEquipmentLabel").textContent = t("editEquipmentLabel");
     document.getElementById("txtEditLocalLabel").textContent = t("editLocalLabel");
     document.getElementById("txtEditSectorLabel").textContent = t("editSectorLabel");
+    document.getElementById("txtEditAudienceProfilesLabel").textContent = t("editAudienceProfilesLabel");
+    document.getElementById("txtEditAudienceTypeLabel").textContent = t("editAudienceTypeLabel");
+    document.getElementById("txtEditAudienceSectorsLabel").textContent = t("editAudienceSectorsLabel");
+    document.getElementById("txtEditAudienceOrganizationLabel").textContent = t("editAudienceOrganizationLabel");
     document.getElementById("txtEditDescriptionLabel").textContent = t("editDescriptionLabel");
     document.getElementById("editDescricao").dataset.placeholder = t("editDescriptionPlaceholder");
     document.getElementById("btnEditList").textContent = t("listButton");
@@ -665,6 +696,40 @@ function openEditModal(row) {
     initEditEditor();
 }
 
+function renderEditProfileOptions(selectedCodes) {
+    const selected = new Set((selectedCodes || []).map(String));
+    const host = document.getElementById("editAudienceProfiles");
+    host.innerHTML = "";
+    profileOptions.forEach(option => {
+        const code = option.Code || option.code;
+        const displayCode = code === "MANAGER" ? "MA" : code;
+        const name = currentLocale === "ja-JP"
+            ? (option.NameJp || option.nameJp || displayCode)
+            : (option.NamePt || option.namePt || displayCode);
+        const label = document.createElement("label");
+        label.className = "audience-profile-option";
+        label.innerHTML = `<input type="checkbox" value="${escapeHtml(code)}" ${selected.has(code) ? "checked" : ""} />`
+            + `<span><strong>${escapeHtml(displayCode)}</strong>${name !== displayCode ? `<small>${escapeHtml(name)}</small>` : ""}</span>`;
+        host.appendChild(label);
+    });
+}
+
+function renderEditAudience(config) {
+    const type = String(config.audienceType || "sector").toLowerCase();
+    document.getElementById("editAudienceType").value = type;
+    const selectedSectors = new Set((config.audienceSectorIds || []).map(Number));
+    Array.from(document.getElementById("editAudienceSectorIds").options)
+        .forEach(option => option.selected = selectedSectors.has(Number(option.value)));
+    document.getElementById("editAudienceOrganizationNodeId").value = String(config.organizationNodeId || 0);
+    updateEditAudienceFields();
+}
+
+function updateEditAudienceFields() {
+    const type = document.getElementById("editAudienceType").value;
+    document.getElementById("editAudienceSectorsField").classList.toggle("hidden", type !== "sector");
+    document.getElementById("editAudienceOrganizationField").classList.toggle("hidden", type !== "organization");
+}
+
 function renderReplies(rows) {
     const list = document.getElementById("replyList");
     list.innerHTML = "";
@@ -699,6 +764,25 @@ function openEdit(id) {
 }
 
 function saveEdit() {
+    const selectedProfiles = Array.from(document.querySelectorAll("#editAudienceProfiles input:checked"))
+        .map(input => input.value);
+    if (selectedProfiles.length === 0) {
+        alert(t("validationAudienceProfiles"));
+        return;
+    }
+    const audienceType = document.getElementById("editAudienceType").value;
+    const audienceSectorIds = Array.from(document.getElementById("editAudienceSectorIds").selectedOptions)
+        .map(option => Number(option.value));
+    const organizationNodeId = Number(document.getElementById("editAudienceOrganizationNodeId").value || 0);
+    if (audienceType === "sector" && audienceSectorIds.length === 0) {
+        alert(t("validationAudienceSectors"));
+        return;
+    }
+    if (audienceType === "organization" && organizationNodeId === 0) {
+        alert(t("validationAudienceOrganization"));
+        return;
+    }
+
     const payload = {
         id: currentEditId,
         categoryId: Number(document.getElementById("editCategoria").value),
@@ -706,6 +790,10 @@ function saveEdit() {
         localId: Number(document.getElementById("editLocal").value),
         sectorId: Number(document.getElementById("editSector").value),
         description: document.getElementById("editDescricao").innerHTML,
+        profileCodes: selectedProfiles,
+        audienceType,
+        sectorIds: audienceSectorIds,
+        organizationNodeId,
         existingAttachments: editExistingAttachments.map(x => ({
             FileName: x.FileName ?? x.fileName,
             FilePath: x.FilePath ?? x.filePath

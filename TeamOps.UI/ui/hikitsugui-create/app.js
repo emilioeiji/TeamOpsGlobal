@@ -21,6 +21,8 @@ const I18N = {
         audienceGeneralOption: "Toda a organização",
         audienceSectorsLabel: "Setores destinatários",
         audienceOrganizationLabel: "Unidade destinatária",
+        audienceProfilesLabel: "Perfis autorizados a visualizar",
+        audienceProfilesHint: "Selecione explicitamente quem poderá ler este registro.",
         descriptionLabel: "Descrição",
         listButton: "• Lista",
         clearButton: "Limpar",
@@ -35,7 +37,8 @@ const I18N = {
         validationSector: "Selecione um setor.",
         validationDescription: "Informe a descrição.",
         validationAudienceSectors: "Selecione ao menos um setor destinatário.",
-        validationAudienceOrganization: "Selecione uma unidade destinatária."
+        validationAudienceOrganization: "Selecione uma unidade destinatária.",
+        validationAudienceProfiles: "Selecione ao menos um perfil autorizado."
     },
     "ja-JP": {
         headerTitle: "Hikitsugui を登録",
@@ -53,6 +56,8 @@ const I18N = {
         audienceGeneralOption: "組織全体",
         audienceSectorsLabel: "対象セクター",
         audienceOrganizationLabel: "対象組織単位",
+        audienceProfilesLabel: "閲覧を許可するプロフィール",
+        audienceProfilesHint: "この引継ぎを閲覧できるプロフィールを明示的に選択してください。",
         descriptionLabel: "内容",
         listButton: "• リスト",
         clearButton: "クリア",
@@ -67,7 +72,8 @@ const I18N = {
         validationSector: "セクターを選択してください。",
         validationDescription: "内容を入力してください。",
         validationAudienceSectors: "対象セクターを1つ以上選択してください。",
-        validationAudienceOrganization: "対象組織単位を選択してください。"
+        validationAudienceOrganization: "対象組織単位を選択してください。",
+        validationAudienceProfiles: "閲覧を許可するプロフィールを1つ以上選択してください。"
     }
 };
 
@@ -146,6 +152,7 @@ function preencherFiltros(data) {
     fillSelect("sectorId", data.sectors, "Id", getLocalizedField(), true);
     fillSelect("audienceSectorIds", data.sectors, "Id", getLocalizedField());
     fillSelect("audienceOrganizationNodeId", data.organizationNodes, "Id", getLocalizedField(), true);
+    renderProfileOptions(data.profileOptions || []);
 
     const organizationOption = document.getElementById("txtAudienceOrganizationOption");
     organizationOption.disabled = !data.organizationNodes?.length;
@@ -176,12 +183,31 @@ function applyLocale() {
     document.getElementById("txtAudienceGeneralOption").textContent = t("audienceGeneralOption");
     document.getElementById("txtAudienceSectorsLabel").textContent = t("audienceSectorsLabel");
     document.getElementById("txtAudienceOrganizationLabel").textContent = t("audienceOrganizationLabel");
+    document.getElementById("txtAudienceProfilesLabel").textContent = t("audienceProfilesLabel");
+    document.getElementById("txtAudienceProfilesHint").textContent = t("audienceProfilesHint");
     document.getElementById("txtDescriptionLabel").textContent = t("descriptionLabel");
     document.getElementById("btnBulletList").textContent = t("listButton");
     document.getElementById("btnClearFormat").textContent = t("clearButton");
     document.getElementById("txtAttachmentsLabel").textContent = t("attachmentsLabel");
     document.getElementById("btnSalvar").textContent = t("saveButton");
     document.getElementById("btnCancelar").textContent = t("cancelButton");
+}
+
+function renderProfileOptions(options) {
+    const host = document.getElementById("audienceProfiles");
+    host.innerHTML = "";
+
+    options.forEach(option => {
+        const code = option.Code || option.code;
+        const name = state.locale === "ja-JP"
+            ? (option.NameJp || option.nameJp || code)
+            : (option.NamePt || option.namePt || code);
+        const label = document.createElement("label");
+        label.className = "audience-profile-option";
+        label.innerHTML = `<input type="checkbox" value="${escapeHtml(code)}" ${code === "OP" ? "checked" : ""} />`
+            + `<span><strong>${escapeHtml(code === "MANAGER" ? "MA" : code)}</strong>${name && name !== code ? `<small>${escapeHtml(name)}</small>` : ""}</span>`;
+        host.appendChild(label);
+    });
 }
 
 function fillSelect(id, list, valueField, textField, allowZero = false) {
@@ -323,6 +349,11 @@ function validar() {
         return false;
     }
 
+    if (document.querySelectorAll("#audienceProfiles input:checked").length === 0) {
+        alert(t("validationAudienceProfiles"));
+        return false;
+    }
+
     const editor = document.getElementById("txtDescricao");
     const plain = editor.innerText.trim();
     if (!plain) {
@@ -348,6 +379,8 @@ function salvar() {
         sectorIds: Array.from(document.getElementById("audienceSectorIds").selectedOptions)
             .map(option => Number(option.value)),
         organizationNodeId: Number(document.getElementById("audienceOrganizationNodeId").value || 0),
+        profileCodes: Array.from(document.querySelectorAll("#audienceProfiles input:checked"))
+            .map(input => input.value),
         text: document.getElementById("txtDescricao").innerHTML,
         attachments
     };

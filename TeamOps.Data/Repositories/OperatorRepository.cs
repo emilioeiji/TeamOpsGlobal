@@ -22,9 +22,9 @@ namespace TeamOps.Data.Repositories
             cmd.CommandText = @"
                 INSERT INTO Operators 
                 (CodigoFJ, NameRomanji, NameNihongo, ShiftId, GroupId, SectorId, 
-                 StartDate, EndDate, Trainer, Status, IsLeader, Telefone, Endereco, Nascimento)
+                 StartDate, EndDate, Trainer, Status, IsLeader, Telefone, Endereco, Nascimento, OperatorType)
                 VALUES 
-                (@c, @r, @n, @s, @g, @sec, @start, @end, @t, @st, @leader, @tel, @endereco, @nascimento)";
+                (@c, @r, @n, @s, @g, @sec, @start, @end, @t, @st, @leader, @tel, @endereco, @nascimento, @operatorType)";
 
             cmd.Parameters.AddWithValue("@c", op.CodigoFJ);
             cmd.Parameters.AddWithValue("@r", op.NameRomanji);
@@ -40,6 +40,7 @@ namespace TeamOps.Data.Repositories
             cmd.Parameters.AddWithValue("@tel", (object?)op.Telefone ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@endereco", (object?)op.Endereco ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@nascimento", (object?)op.Nascimento ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@operatorType", op.OperatorType);
 
             cmd.ExecuteNonQuery();
         }
@@ -70,7 +71,8 @@ namespace TeamOps.Data.Repositories
                     s.NameJp AS ShiftName,
                     g.NameJp AS GroupName,
                     sc.NameJp AS SectorName,
-                    o.Nascimento
+                    o.Nascimento,
+                    o.OperatorType
                 FROM Operators o
                 LEFT JOIN Shifts s   ON s.Id = o.ShiftId
                 LEFT JOIN Groups g   ON g.Id = o.GroupId
@@ -109,7 +111,8 @@ namespace TeamOps.Data.Repositories
                     s.NameJp AS ShiftName,
                     g.NameJp AS GroupName,
                     sc.NameJp AS SectorName,
-                    o.Nascimento
+                    o.Nascimento,
+                    o.OperatorType
                 FROM Operators o
                 LEFT JOIN Shifts s   ON s.Id = o.ShiftId
                 LEFT JOIN Groups g   ON g.Id = o.GroupId
@@ -132,7 +135,7 @@ namespace TeamOps.Data.Repositories
                 UPDATE Operators
                 SET NameRomanji=@r, NameNihongo=@n, ShiftId=@s, GroupId=@g, SectorId=@sec,
                     StartDate=@start, EndDate=@end, Trainer=@t, Status=@st, IsLeader=@leader,
-                    Telefone=@tel, Endereco=@endereco, Nascimento=@nascimento
+                    Telefone=@tel, Endereco=@endereco, Nascimento=@nascimento, OperatorType=@operatorType
                 WHERE CodigoFJ=@c";
 
             cmd.Parameters.AddWithValue("@c", op.CodigoFJ);
@@ -149,6 +152,7 @@ namespace TeamOps.Data.Repositories
             cmd.Parameters.AddWithValue("@tel", (object?)op.Telefone ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@endereco", (object?)op.Endereco ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@nascimento", (object?)op.Nascimento ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@operatorType", op.OperatorType);
 
             cmd.ExecuteNonQuery();
         }
@@ -196,7 +200,8 @@ namespace TeamOps.Data.Repositories
                     s.NameJp AS ShiftName,
                     g.NameJp AS GroupName,
                     sc.NameJp AS SectorName,
-                    o.Nascimento
+                    o.Nascimento,
+                    o.OperatorType
                 FROM Operators o
                 LEFT JOIN Shifts s   ON s.Id = o.ShiftId
                 LEFT JOIN Groups g   ON g.Id = o.GroupId
@@ -235,7 +240,8 @@ namespace TeamOps.Data.Repositories
                 GroupName = reader.IsDBNull(15) ? null : reader.GetString(15),
                 SectorName = reader.IsDBNull(16) ? null : reader.GetString(16),
 
-                Nascimento = reader.IsDBNull(17) ? null : reader.GetDateTime(17)
+                Nascimento = reader.IsDBNull(17) ? null : reader.GetDateTime(17),
+                OperatorType = reader.IsDBNull(18) ? "Regular" : reader.GetString(18)
             };
         }
 
@@ -263,7 +269,8 @@ namespace TeamOps.Data.Repositories
                     s.NameJp AS ShiftName,
                     g.NameJp AS GroupName,
                     sc.NameJp AS SectorName,
-                    o.Nascimento
+                    o.Nascimento,
+                    o.OperatorType
                 FROM Operators o
                 LEFT JOIN Shifts s   ON s.Id = o.ShiftId
                 LEFT JOIN Groups g   ON g.Id = o.GroupId

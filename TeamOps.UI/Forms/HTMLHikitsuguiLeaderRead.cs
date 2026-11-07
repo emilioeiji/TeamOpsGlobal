@@ -149,6 +149,11 @@ namespace TeamOps.UI.Forms
 
                         var dtInicial = DateTime.Today.AddDays(-31).ToString("yyyy-MM-dd");
                         var dtFinal = DateTime.Today.AddDays(1).ToString("yyyy-MM-dd");
+                        var profileOptions = _audienceService.GetProfileOptions();
+                        var organizationNodes = _audienceService.GetTargetableOrganizationUnits(_currentUser.Id);
+                        var allActiveSectorIds = conn.Query<int>("SELECT Id FROM Sectors WHERE IsActive = 1;").ToArray();
+                        var canTargetGeneral = allActiveSectorIds.Length > 0
+                            && allActiveSectorIds.All(authorizedSectorIds.Contains);
 
                         var jsonFilters = JsonSerializer.Serialize(new
                         {
@@ -160,6 +165,9 @@ namespace TeamOps.UI.Forms
                             equipments,
                             locals,
                             sectors,
+                            profileOptions,
+                            organizationNodes,
+                            canTargetGeneral,
                             dtInicial,
                             dtFinal
                         });
@@ -248,12 +256,27 @@ namespace TeamOps.UI.Forms
                         var attachments = conn.Query(
                             "SELECT FileName, FilePath FROM HikitsuguiAttachments WHERE HikitsuguiId = @id",
                             new { id = msg.id });
+                        var profileCodes = _audienceService.GetProfileAudience(msg.id);
+                        var audienceRows = conn.Query(
+                            @"SELECT AudienceType, SectorId, OrganizationNodeId
+                              FROM HikitsuguiAudiences WHERE HikitsuguiId = @id ORDER BY Id;",
+                            new { id = msg.id }).ToList();
+                        var audienceType = audienceRows.FirstOrDefault()?.AudienceType ?? "Sector";
+                        var audienceSectorIds = audienceRows
+                            .Where(item => item.SectorId != null)
+                            .Select(item => (int)item.SectorId)
+                            .ToArray();
+                        var organizationNodeId = audienceRows.FirstOrDefault()?.OrganizationNodeId;
 
                         var json = JsonSerializer.Serialize(new
                         {
                             type = "hikitsugui_edit",
                             data = new[] { row },
-                            attachments
+                            attachments,
+                            profileCodes,
+                            audienceType,
+                            audienceSectorIds,
+                            organizationNodeId
                         });
 
                         webViewHikitsugui.CoreWebView2.PostWebMessageAsJson(json);
@@ -476,6 +499,29 @@ namespace TeamOps.UI.Forms
                     {
                         _audienceService.DemandCanEdit(_currentUser.Id, msg.id);
                         _audienceService.DemandCanCreateForSectors(_currentUser.Id, [msg.sectorId]);
+                        var normalizedAudienceType = (msg.audienceType ?? "sector").Trim().ToLowerInvariant();
+                        if (normalizedAudienceType == "sector")
+                            _audienceService.DemandCanCreateForSectors(_currentUser.Id, msg.sectorIds);
+                        else if (normalizedAudienceType == "organization"
+                            && !_audienceService.GetTargetableOrganizationUnits(_currentUser.Id)
+                                .Any(item => item.Id == msg.organizationNodeId))
+                            throw new UnauthorizedAccessException("Unidade organizacional fora do escopo autorizado.");
+                        else if (normalizedAudienceType == "general")
+                        {
+                            using var validationConn = _factory.CreateOpenConnection();
+                            var activeSectorIds = validationConn.Query<int>("SELECT Id FROM Sectors WHERE IsActive = 1;").ToArray();
+                            _audienceService.DemandCanCreateForSectors(_currentUser.Id, activeSectorIds);
+                        }
+                        else if (normalizedAudienceType is not ("organization" or "general"))
+                            throw new InvalidOperationException("Tipo de audiencia invalido.");
+                        var allowedProfileCodes = _audienceService.GetProfileOptions()
+                            .Select(item => item.Code)
+                            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                        var requestedProfileCodes = msg.profileCodes
+                            .Select(code => string.Equals(code, "MA", StringComparison.OrdinalIgnoreCase) ? "MANAGER" : code)
+                            .ToArray();
+                        if (requestedProfileCodes.Length == 0 || requestedProfileCodes.Any(code => !allowedProfileCodes.Contains(code)))
+                            throw new InvalidOperationException("Selecione uma audiencia de perfis valida.");
                         using var conn = _factory.CreateOpenConnection();
                         using var tran = conn.BeginTransaction();
 
@@ -548,6 +594,20 @@ namespace TeamOps.UI.Forms
                             }
 
                             tran.Commit();
+
+                            switch (normalizedAudienceType)
+                            {
+                                case "organization":
+                                    _audienceService.SetOrganizationAudience(_currentUser.Id, id, msg.organizationNodeId);
+                                    break;
+                                case "general":
+                                    _audienceService.SetGeneralAudience(_currentUser.Id, id);
+                                    break;
+                                default:
+                                    _audienceService.SetSectorAudience(_currentUser.Id, id, msg.sectorIds);
+                                    break;
+                            }
+                            _audienceService.SetProfileAudience(_currentUser.Id, id, requestedProfileCodes);
 
                             try
                             {

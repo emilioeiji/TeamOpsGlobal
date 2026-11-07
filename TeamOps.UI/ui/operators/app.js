@@ -27,6 +27,7 @@ const I18N = {
         thShift: "Turno",
         thGroup: "Grupo",
         thSector: "Setor",
+        thType: "Tipo",
         thStart: "Inicio",
         thEnd: "Termino",
         thStatus: "Status",
@@ -54,6 +55,14 @@ const I18N = {
         labelShift: "Turno",
         labelGroup: "Grupo",
         labelSector: "Setor",
+        labelOperatorType: "Tipo de operador",
+        operatorRegular: "Regular",
+        operatorRelief: "Relief (リリーフ)",
+        labelAdditionalSectors: "Setores adicionais",
+        additionalSectorsHint: "Use Ctrl para selecionar mais de um setor.",
+        labelOperatorPassword: "Senha do OperatorApp",
+        operatorPasswordCreateHint: "Mínimo de 6 caracteres, com maiúscula, minúscula e número.",
+        operatorPasswordEditHint: "Deixe em branco para manter a senha atual. Se o acesso ainda não existir, informe uma senha.",
         labelStart: "Data de Inicio",
         labelEnd: "Data de Termino",
         labelBirth: "Nascimento",
@@ -88,6 +97,7 @@ const I18N = {
         thShift: "\u30b7\u30d5\u30c8",
         thGroup: "\u30b0\u30eb\u30fc\u30d7",
         thSector: "\u30bb\u30af\u30bf\u30fc",
+        thType: "\u7a2e\u985e",
         thStart: "\u958b\u59cb",
         thEnd: "\u7d42\u4e86",
         thStatus: "\u72b6\u614b",
@@ -115,6 +125,14 @@ const I18N = {
         labelShift: "\u30b7\u30d5\u30c8",
         labelGroup: "\u30b0\u30eb\u30fc\u30d7",
         labelSector: "\u30bb\u30af\u30bf\u30fc",
+        labelOperatorType: "\u4f5c\u696d\u8005\u7a2e\u5225",
+        operatorRegular: "\u901a\u5e38",
+        operatorRelief: "Relief (\u30ea\u30ea\u30fc\u30d5)",
+        labelAdditionalSectors: "\u8ffd\u52a0\u30bb\u30af\u30bf\u30fc",
+        additionalSectorsHint: "Ctrl \u30ad\u30fc\u3067\u8907\u6570\u9078\u629e\u3067\u304d\u307e\u3059\u3002",
+        labelOperatorPassword: "OperatorApp \u30d1\u30b9\u30ef\u30fc\u30c9",
+        operatorPasswordCreateHint: "6\u6587\u5b57\u4ee5\u4e0a\u3067\u5927\u6587\u5b57\u3001\u5c0f\u6587\u5b57\u3001\u6570\u5b57\u3092\u542b\u3081\u3066\u304f\u3060\u3055\u3044\u3002",
+        operatorPasswordEditHint: "\u73fe\u5728\u306e\u30d1\u30b9\u30ef\u30fc\u30c9\u3092\u4fdd\u6301\u3059\u308b\u5834\u5408\u306f\u7a7a\u6b04\u3002\u30a2\u30af\u30bb\u30b9\u672a\u4f5c\u6210\u306e\u5834\u5408\u306f\u5fc5\u9808\u3067\u3059\u3002",
         labelStart: "\u958b\u59cb\u65e5",
         labelEnd: "\u7d42\u4e86\u65e5",
         labelBirth: "\u751f\u5e74\u6708\u65e5",
@@ -148,6 +166,8 @@ function bindEvents() {
     document.getElementById("btnCloseModal").addEventListener("click", closeModal);
     document.getElementById("modalBackdrop").addEventListener("click", closeModal);
     document.getElementById("chkHasEnd").addEventListener("change", toggleEndDate);
+    document.getElementById("cmbOperatorType").addEventListener("change", toggleOperatorType);
+    document.getElementById("cmbSector").addEventListener("change", refreshAdditionalSectorOptions);
     document.getElementById("txtCodigoFJ").addEventListener("input", event => {
         event.target.value = event.target.value.toUpperCase();
     });
@@ -218,6 +238,7 @@ function hydrateScreen(payload) {
     fillSelect("cmbShift", shifts);
     fillSelect("cmbGroup", groups);
     fillSelect("cmbSector", sectors);
+    refreshAdditionalSectorOptions();
 
     resetModalForm();
     applyFilters();
@@ -229,6 +250,9 @@ function normalizeRows(items) {
         trainer: toBool(item.trainer),
         status: toBool(item.status),
         isLeader: toBool(item.isLeader)
+        ,sectorIds: String(item.sectorIdsCsv || item.sectorId || "")
+            .split(",").map(Number).filter(Boolean)
+        ,hasOperatorAppAccess: toBool(item.hasOperatorAppAccess)
     }));
 }
 
@@ -294,6 +318,7 @@ function renderTable(items) {
                     <th>${escapeHtml(t("thShift"))}</th>
                     <th>${escapeHtml(t("thGroup"))}</th>
                     <th>${escapeHtml(t("thSector"))}</th>
+                    <th>${escapeHtml(t("thType"))}</th>
                     <th>${escapeHtml(t("thStart"))}</th>
                     <th>${escapeHtml(t("thEnd"))}</th>
                     <th>${escapeHtml(t("thStatus"))}</th>
@@ -318,6 +343,7 @@ function renderTable(items) {
                 <td>${escapeHtml(localizedName(item.shiftNamePt, item.shiftNameJp))}</td>
                 <td>${escapeHtml(localizedName(item.groupNamePt, item.groupNameJp))}</td>
                 <td>${escapeHtml(localizedName(item.sectorNamePt, item.sectorNameJp))}</td>
+                <td>${escapeHtml(item.operatorType === "Relief" ? t("operatorRelief") : t("operatorRegular"))}</td>
                 <td>${escapeHtml(item.startDate || "")}</td>
                 <td>${escapeHtml(item.endDate || "-")}</td>
                 <td><span class="status-pill ${item.status ? "status-active" : "status-inactive"}">${statusLabel}</span></td>
@@ -372,6 +398,12 @@ function openEditModal(codigoFJ) {
     document.getElementById("cmbShift").value = String(operator.shiftId || "");
     document.getElementById("cmbGroup").value = String(operator.groupId || "");
     document.getElementById("cmbSector").value = String(operator.sectorId || "");
+    document.getElementById("cmbOperatorType").value = operator.operatorType || "Regular";
+    refreshAdditionalSectorOptions();
+    Array.from(document.getElementById("cmbAdditionalSectors").options).forEach(option => {
+        option.selected = operator.sectorIds.includes(Number(option.value));
+    });
+    document.getElementById("txtOperatorPassword").value = "";
     document.getElementById("dtStart").value = operator.startDate || "";
     document.getElementById("chkHasEnd").checked = !!operator.endDate;
     document.getElementById("dtEnd").value = operator.endDate || "";
@@ -384,6 +416,7 @@ function openEditModal(codigoFJ) {
 
     toggleEndDate();
     syncModeState();
+    toggleOperatorType();
     applyFilters();
     document.getElementById("operatorModal").classList.remove("hidden");
 }
@@ -411,6 +444,9 @@ function resetModalForm() {
     document.getElementById("cmbShift").value = "";
     document.getElementById("cmbGroup").value = "";
     document.getElementById("cmbSector").value = "";
+    document.getElementById("cmbOperatorType").value = "Regular";
+    document.getElementById("txtOperatorPassword").value = "";
+    refreshAdditionalSectorOptions();
     document.getElementById("dtStart").value = "";
     document.getElementById("chkHasEnd").checked = false;
     document.getElementById("dtEnd").value = "";
@@ -423,6 +459,7 @@ function resetModalForm() {
 
     toggleEndDate();
     syncModeState();
+    toggleOperatorType();
     applyFilters();
 }
 
@@ -440,6 +477,29 @@ function toggleEndDate() {
     if (!hasEnd) {
         endInput.value = "";
     }
+}
+
+function toggleOperatorType() {
+    const relief = document.getElementById("cmbOperatorType").value === "Relief";
+    document.getElementById("additionalSectorsGroup").classList.toggle("hidden", !relief);
+    document.getElementById("cmbAdditionalSectors").disabled = !relief;
+    if (!relief) {
+        Array.from(document.getElementById("cmbAdditionalSectors").options).forEach(option => option.selected = false);
+    }
+}
+
+function refreshAdditionalSectorOptions() {
+    const select = document.getElementById("cmbAdditionalSectors");
+    const selected = new Set(Array.from(select.selectedOptions).map(option => option.value));
+    const primary = document.getElementById("cmbSector").value;
+    select.innerHTML = "";
+    sectors.filter(item => String(item.Id) !== primary).forEach(item => {
+        const option = document.createElement("option");
+        option.value = String(item.Id);
+        option.textContent = localizedName(item.NamePt, item.NameJp);
+        option.selected = selected.has(option.value);
+        select.appendChild(option);
+    });
 }
 
 function submitModal() {
@@ -473,6 +533,10 @@ function buildPayload() {
         shiftId: Number(document.getElementById("cmbShift").value || 0),
         groupId: Number(document.getElementById("cmbGroup").value || 0),
         sectorId: Number(document.getElementById("cmbSector").value || 0),
+        operatorType: document.getElementById("cmbOperatorType").value,
+        sectorIds: Array.from(document.getElementById("cmbAdditionalSectors").selectedOptions)
+            .map(option => Number(option.value)),
+        password: document.getElementById("txtOperatorPassword").value,
         startDate: document.getElementById("dtStart").value,
         hasEndDate: document.getElementById("chkHasEnd").checked,
         endDate: document.getElementById("dtEnd").value,
@@ -492,6 +556,9 @@ function syncModeState() {
         ? t("modalEditSubtitle")(editingCodigoFJ)
         : t("modalCreateSubtitle");
     document.getElementById("btnSalvarModal").textContent = isEdit ? t("saveChanges") : t("register");
+    document.getElementById("operatorPasswordHint").textContent = isEdit
+        ? t("operatorPasswordEditHint")
+        : t("operatorPasswordCreateHint");
 }
 
 function localizedName(pt, jp) {

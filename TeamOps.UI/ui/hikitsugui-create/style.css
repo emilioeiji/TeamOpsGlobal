@@ -322,6 +322,58 @@ select[multiple].input {
     color: var(--color-danger-hover);
 }
 
+.audience-profile-heading {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 12px;
+}
+
+.audience-profile-heading span {
+    color: #667085;
+    font-size: 13px;
+}
+
+.audience-profile-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+    gap: 10px;
+}
+
+.audience-profile-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 48px;
+    padding: 10px 12px;
+    border: 1px solid #d0d5dd;
+    border-radius: 10px;
+    background: #fff;
+    cursor: pointer;
+}
+
+.audience-profile-option:has(input:checked) {
+    border-color: var(--color-primary);
+    background: #eff6ff;
+}
+
+.audience-profile-option input {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--color-primary);
+}
+
+.audience-profile-option span {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.audience-profile-option small {
+    color: #667085;
+    font-size: 11px;
+}
+
 .flex.justify-end {
     display: flex;
     justify-content: flex-end;

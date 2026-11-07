@@ -25,6 +25,7 @@ namespace TeamOps.UI.Forms
         private readonly User _currentUser;
         private readonly AuthorizationService _authorization;
         private readonly SessionValidationService _sessionValidation;
+        private readonly OperatorAccessService _operatorAccess;
 
         public HTMLFormOperators()
         {
@@ -41,6 +42,7 @@ namespace TeamOps.UI.Forms
             _shiftRepo = new ShiftRepository(_factory);
             _groupRepo = new GroupRepository(_factory);
             _sectorRepo = new SectorRepository(_factory);
+            _operatorAccess = new OperatorAccessService(_factory);
 
             InitializeWebView();
         }
@@ -112,6 +114,7 @@ namespace TeamOps.UI.Forms
         private void LoadInitialData()
         {
             using var conn = _factory.CreateOpenConnection();
+            var authorizedSectorIds = _authorization.GetContext(_currentUser.Id).AuthorizedSectorIds;
 
             PostJson(new
             {
@@ -119,7 +122,7 @@ namespace TeamOps.UI.Forms
                 locale = Program.CurrentLocale,
                 shifts = _shiftRepo.GetAll(),
                 groups = _groupRepo.GetAll(),
-                sectors = _sectorRepo.GetAll(),
+                sectors = _sectorRepo.GetAll().Where(item => authorizedSectorIds.Contains(item.Id)),
                 rows = QueryOperators(conn).ToList()
             });
         }
@@ -135,11 +138,27 @@ namespace TeamOps.UI.Forms
                     throw new InvalidOperationException(L("Ja existe um operador com este Codigo FJ.", "\u3053\u306e FJ \u30b3\u30fc\u30c9\u306e\u4f5c\u696d\u8005\u306f\u65e2\u306b\u5b58\u5728\u3057\u307e\u3059\u3002"));
 
                 _opRepo.Add(BuildOperator(msg, codigoFJ));
+                try
+                {
+                    _operatorAccess.ProvisionOrUpdate(
+                        codigoFJ,
+                        msg.nameRomanji,
+                        msg.sectorId,
+                        msg.sectorIds,
+                        msg.operatorType,
+                        msg.password,
+                        msg.status);
+                }
+                catch
+                {
+                    _opRepo.Delete(codigoFJ);
+                    throw;
+                }
 
                 PostJson(new
                 {
                     type = "saved",
-                    message = L("Operador cadastrado com sucesso.", "\u4f5c\u696d\u8005\u3092\u767b\u9332\u3057\u307e\u3057\u305f\u3002")
+                    message = L("Operador cadastrado e acesso ao OperatorApp ativado.", "\u4f5c\u696d\u8005\u3092\u767b\u9332\u3057\u3001OperatorApp \u3078\u306e\u30a2\u30af\u30bb\u30b9\u3092\u6709\u52b9\u306b\u3057\u307e\u3057\u305f\u3002")
                 });
 
                 SendRows();
@@ -165,6 +184,14 @@ namespace TeamOps.UI.Forms
                     throw new InvalidOperationException(L("Operador nao encontrado para atualizacao.", "\u66f4\u65b0\u5bfe\u8c61\u306e\u4f5c\u696d\u8005\u304c\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3002"));
 
                 _opRepo.Update(BuildOperator(msg, codigoFJ));
+                _operatorAccess.ProvisionOrUpdate(
+                    codigoFJ,
+                    msg.nameRomanji,
+                    msg.sectorId,
+                    msg.sectorIds,
+                    msg.operatorType,
+                    msg.password,
+                    msg.status);
 
                 PostJson(new
                 {
@@ -204,6 +231,7 @@ namespace TeamOps.UI.Forms
                             $"\u3053\u306e\u4f5c\u696d\u8005\u306f FJ \u30b3\u30fc\u30c9\u304c {dependencyTable} \u306e\u30ec\u30b3\u30fc\u30c9\u3068\u7d10\u4ed8\u3051\u3089\u308c\u3066\u3044\u308b\u305f\u3081\u524a\u9664\u3067\u304d\u307e\u305b\u3093\u3002")
                     );
 
+                _operatorAccess.Revoke(codigoFJ);
                 _opRepo.Delete(codigoFJ);
 
                 PostJson(new
@@ -260,6 +288,24 @@ namespace TeamOps.UI.Forms
             if (msg.sectorId <= 0)
                 throw new InvalidOperationException(L("Selecione o setor.", "\u30bb\u30af\u30bf\u30fc\u3092\u9078\u629e\u3057\u3066\u304f\u3060\u3055\u3044\u3002"));
 
+            var selectedSectors = msg.sectorIds.Where(id => id > 0).Append(msg.sectorId).Distinct().ToArray();
+            var operatorType = string.Equals(msg.operatorType, "Relief", StringComparison.OrdinalIgnoreCase)
+                ? "Relief"
+                : "Regular";
+            if (operatorType == "Regular" && selectedSectors.Length != 1)
+                throw new InvalidOperationException(L("Operador Regular deve possuir somente o setor principal.", "\u901a\u5e38\u4f5c\u696d\u8005\u306f\u4e3b\u8981\u30bb\u30af\u30bf\u30fc\u306e\u307f\u9078\u629e\u3067\u304d\u307e\u3059\u3002"));
+            if (operatorType == "Relief" && selectedSectors.Length < 2)
+                throw new InvalidOperationException(L("Operador Relief deve possuir ao menos dois setores.", "\u30ea\u30ea\u30fc\u30d5\u4f5c\u696d\u8005\u306f2\u3064\u4ee5\u4e0a\u306e\u30bb\u30af\u30bf\u30fc\u304c\u5fc5\u8981\u3067\u3059\u3002"));
+
+            var authorizedSectors = _authorization.GetContext(_currentUser.Id).AuthorizedSectorIds;
+            if (selectedSectors.Any(id => !authorizedSectors.Contains(id)))
+                throw new UnauthorizedAccessException(L("Existe setor fora do seu escopo autorizado.", "\u6a29\u9650\u7bc4\u56f2\u5916\u306e\u30bb\u30af\u30bf\u30fc\u304c\u542b\u307e\u308c\u3066\u3044\u307e\u3059\u3002"));
+
+            if (!isUpdate || !_operatorAccess.HasIdentity(codigoFJ))
+                PasswordPolicy.DemandStrong(msg.password);
+            else if (!string.IsNullOrWhiteSpace(msg.password))
+                PasswordPolicy.DemandStrong(msg.password);
+
             if (!DateTime.TryParse(msg.startDate, out var startDate))
                 throw new InvalidOperationException(L("Informe uma data de inicio valida.", "\u6709\u52b9\u306a\u958b\u59cb\u65e5\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002"));
 
@@ -297,6 +343,7 @@ namespace TeamOps.UI.Forms
                 ShiftId = msg.shiftId,
                 GroupId = msg.groupId,
                 SectorId = msg.sectorId,
+                OperatorType = string.Equals(msg.operatorType, "Relief", StringComparison.OrdinalIgnoreCase) ? "Relief" : "Regular",
                 StartDate = DateTime.Parse(msg.startDate),
                 EndDate = endDate,
                 Trainer = msg.trainer,
@@ -318,6 +365,13 @@ namespace TeamOps.UI.Forms
                     o.ShiftId AS shiftId,
                     o.GroupId AS groupId,
                     o.SectorId AS sectorId,
+                    o.OperatorType AS operatorType,
+                    COALESCE((SELECT GROUP_CONCAT(a.SectorId, ',')
+                              FROM OperatorSectorAssignments a
+                              WHERE a.OperatorCodigoFJ = o.CodigoFJ), CAST(o.SectorId AS TEXT)) AS sectorIdsCsv,
+                    EXISTS(SELECT 1 FROM Users u
+                           WHERE u.CodigoFJ = o.CodigoFJ COLLATE NOCASE
+                              OR u.Login = o.CodigoFJ COLLATE NOCASE) AS hasOperatorAppAccess,
                     substr(o.StartDate, 1, 10) AS startDate,
                     CASE
                         WHEN o.EndDate IS NULL THEN ''
@@ -367,7 +421,7 @@ namespace TeamOps.UI.Forms
                 FROM sqlite_master
                 WHERE type = 'table'
                   AND name NOT LIKE 'sqlite_%'
-                  AND name <> 'Operators'
+                  AND name NOT IN ('Operators', 'OperatorSectorAssignments')
                 ORDER BY name;";
 
             using var tablesReader = tablesCmd.ExecuteReader();
