@@ -4,6 +4,7 @@ let currentEditId = null;
 let currentLocale = "pt-BR";
 let profileOptions = [];
 let editAudienceConfiguration = {};
+let editLocals = [];
 
 const I18N = {
     "pt-BR": {
@@ -75,6 +76,7 @@ const I18N = {
         cancel: "Cancelar",
         allOption: "Todos",
         selectOption: "Selecionar..."
+        ,wholeSectorOption: "Todo o setor"
     },
     "ja-JP": {
         headerTitle: "Hikitsugui Leader Read",
@@ -145,6 +147,7 @@ const I18N = {
         cancel: "キャンセル",
         allOption: "すべて",
         selectOption: "選択してください"
+        ,wholeSectorOption: "セクター全体"
     }
 };
 
@@ -233,6 +236,7 @@ window.addEventListener("DOMContentLoaded", () => {
         });
     }
     document.getElementById("editAudienceType").addEventListener("change", updateEditAudienceFields);
+    document.getElementById("editSector").addEventListener("change", () => fillEditLocals(0));
 });
 
 function initReplyEditor() {
@@ -270,7 +274,7 @@ window.chrome.webview.addEventListener("message", e => {
             document.getElementById("dtFinal").value = msg.dtFinal;
             fillSelect("editCategoria", msg.categories, "Id", getLocaleField("NamePt", "NameJp"), false);
             fillSelect("editEquipamento", msg.equipments, "Id", getLocaleField("NamePt", "NameJp"), false);
-            fillSelect("editLocal", msg.locals, "Id", getLocaleField("NamePt", "NameJp"), false);
+            editLocals = msg.locals || [];
             fillSelect("editSector", msg.sectors, "Id", getLocaleField("NamePt", "NameJp"), false);
             fillSelect("editAudienceSectorIds", msg.sectors, "Id", getLocaleField("NamePt", "NameJp"), false);
             document.querySelector('#editAudienceSectorIds option[value="0"]')?.remove();
@@ -688,12 +692,23 @@ function openEditModal(row) {
 
     document.getElementById("editCategoria").value = row.CategoryId;
     document.getElementById("editEquipamento").value = row.EquipmentId ?? 0;
-    document.getElementById("editLocal").value = row.LocalId ?? 0;
     document.getElementById("editSector").value = row.SectorId ?? 0;
+    fillEditLocals(row.LocalId ?? 0);
     document.getElementById("editDescricao").innerHTML = row.Description ?? "";
 
     document.getElementById("modalEdit").classList.remove("hidden");
     initEditEditor();
+}
+
+function fillEditLocals(selectedLocalId) {
+    const sectorId = Number(document.getElementById("editSector").value || 0);
+    const select = document.getElementById("editLocal");
+    select.innerHTML = `<option value="0">${escapeHtml(t("wholeSectorOption"))}</option>`;
+    editLocals.filter(item => Number(item.SectorId) === sectorId).forEach(item => {
+        const name = item[getLocaleField("NamePt", "NameJp")];
+        select.innerHTML += `<option value="${item.Id}">${escapeHtml(name)}</option>`;
+    });
+    select.value = String(selectedLocalId || 0);
 }
 
 function renderEditProfileOptions(selectedCodes) {

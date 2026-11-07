@@ -10,18 +10,18 @@ public sealed class OperatorAccessTests
     private const string Password = "Operador1";
 
     [Fact]
-    public void RegisteringOperator_ProvisionsSecureOperatorAppIdentity()
+    public void RegisteringOperator_ProvisionsInternalIdentityWithoutPasswordInput()
     {
         using var context = new DatabaseTestContext();
         var dad = SectorId(context, "DAD");
         CreateOperator(context, "FJ90001", dad);
 
         var userId = new OperatorAccessService(context.Factory).ProvisionOrUpdate(
-            "FJ90001", "Operador Teste", dad, [dad], "Regular", Password, true);
+            "FJ90001", "Operador Teste", dad, [dad], "Regular", null, true);
 
         var authentication = new AuthenticationService(context.Factory);
         Assert.False(authentication.Authenticate("FJ90001", "errada").Succeeded);
-        Assert.True(authentication.Authenticate("FJ90001", Password).Succeeded);
+        Assert.True(new OperatorAccessService(context.Factory).HasIdentity("FJ90001"));
 
         var access = new AuthorizationService(context.Factory).GetContext(userId);
         Assert.Equal("OP", access.ProfileCode);
@@ -38,7 +38,7 @@ public sealed class OperatorAccessTests
         var service = new OperatorAccessService(context.Factory);
 
         var userId = service.ProvisionOrUpdate(
-            "FJ90002", "Operador Relief", dad, [dad, ias], "Relief", Password, true);
+            "FJ90002", "Operador Relief", dad, [dad, ias], "Relief", null, true);
 
         Assert.Equal(2, service.GetSectors("FJ90002").Count);
         Assert.Contains(ias, new AuthorizationService(context.Factory).GetContext(userId).AuthorizedSectorIds);

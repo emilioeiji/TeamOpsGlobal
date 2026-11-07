@@ -1,7 +1,8 @@
 const state = {
     locale: "pt-BR",
     creatorNamePt: "",
-    creatorNameJp: ""
+    creatorNameJp: "",
+    locals: []
 };
 
 const I18N = {
@@ -15,6 +16,7 @@ const I18N = {
         localLabel: "Local",
         sectorLabel: "Setor",
         selectPlaceholder: "Selecionar...",
+        wholeSectorOption: "Todo o setor",
         audienceTypeLabel: "Audiência",
         audienceSectorOption: "Setor(es)",
         audienceOrganizationOption: "Unidade organizacional",
@@ -50,6 +52,7 @@ const I18N = {
         localLabel: "場所",
         sectorLabel: "セクター",
         selectPlaceholder: "選択してください",
+        wholeSectorOption: "セクター全体",
         audienceTypeLabel: "公開範囲",
         audienceSectorOption: "セクター",
         audienceOrganizationOption: "組織単位",
@@ -105,7 +108,7 @@ window.addEventListener("DOMContentLoaded", () => {
     document.getElementById("btnCancelar").addEventListener("click", () => send("cancel"));
     document.getElementById("fileUpload").addEventListener("change", handleFiles);
     document.getElementById("audienceType").addEventListener("change", updateAudienceFields);
-    document.getElementById("sectorId").addEventListener("change", selectOperationalSectorAsAudience);
+    document.getElementById("sectorId").addEventListener("change", handleOperationalSectorChange);
 
     initEditorToolbar();
 });
@@ -133,6 +136,7 @@ function preencherFiltros(data) {
     state.locale = data.locale === "ja-JP" ? "ja-JP" : "pt-BR";
     state.creatorNamePt = data.creatorNamePt || "";
     state.creatorNameJp = data.creatorNameJp || data.creatorNamePt || "";
+    state.locals = data.locals || [];
 
     applyLocale();
 
@@ -148,8 +152,8 @@ function preencherFiltros(data) {
 
     fillSelect("categoryId", data.categories, "Id", getLocalizedField(), true);
     fillSelect("equipId", data.equipments, "Id", getLocalizedField(), true);
-    fillSelect("localId", data.locals, "Id", getLocalizedField(), true);
     fillSelect("sectorId", data.sectors, "Id", getLocalizedField(), true);
+    fillOperationalLocals();
     fillSelect("audienceSectorIds", data.sectors, "Id", getLocalizedField());
     fillSelect("audienceOrganizationNodeId", data.organizationNodes, "Id", getLocalizedField(), true);
     renderProfileOptions(data.profileOptions || []);
@@ -238,6 +242,22 @@ function selectOperationalSectorAsAudience() {
     if (option) option.selected = true;
 }
 
+function handleOperationalSectorChange() {
+    fillOperationalLocals();
+    selectOperationalSectorAsAudience();
+}
+
+function fillOperationalLocals() {
+    const sectorId = Number(document.getElementById("sectorId").value || 0);
+    const select = document.getElementById("localId");
+    select.innerHTML = `<option value="0">${escapeHtml(t("wholeSectorOption"))}</option>`;
+    state.locals
+        .filter(item => sectorId > 0 && Number(item.SectorId) === sectorId)
+        .forEach(item => {
+            select.innerHTML += `<option value="${item.Id}">${escapeHtml(item[getLocalizedField()])}</option>`;
+        });
+}
+
 let attachments = [];
 
 async function handleFiles(ev) {
@@ -323,11 +343,6 @@ function validar() {
 
     if (Number(document.getElementById("equipId").value) === 0) {
         alert(t("validationEquipment"));
-        return false;
-    }
-
-    if (Number(document.getElementById("localId").value) === 0) {
-        alert(t("validationLocal"));
         return false;
     }
 

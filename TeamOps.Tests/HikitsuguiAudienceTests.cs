@@ -229,6 +229,34 @@ public sealed class HikitsuguiAudienceTests
         Assert.Equal(dadMessage, rows[0].Id);
     }
 
+    [Fact]
+    public void OperatorLocalFilter_ReturnsWholeSectorAndSelectedLocalOnly()
+    {
+        using var context = new DatabaseTestContext();
+        var reader = CreateUser(context, "OP", "5552", "DAD");
+        var author = CreateUser(context, "GL", "5552", "DAD");
+        var selectedLocal = CreateLocal(context, "DAD");
+        var otherLocal = CreateLocal(context, "DAD");
+        var wholeSectorMessage = CreateMessage(context, author);
+        var selectedLocalMessage = CreateMessage(context, author);
+        var otherLocalMessage = CreateMessage(context, author);
+        SetOperatorMessage(context, selectedLocalMessage, selectedLocal);
+        SetOperatorMessage(context, otherLocalMessage, otherLocal);
+        var audience = new HikitsuguiAudienceService(context.Factory);
+        foreach (var id in new[] { wholeSectorMessage, selectedLocalMessage, otherLocalMessage })
+        {
+            audience.SetSectorAudience(author, id, [SectorId(context, "DAD")]);
+            audience.SetProfileAudience(author, id, ["OP"]);
+        }
+
+        var rows = new HikitsuguiRepository(context.Factory)
+            .GetForOperator(DateTime.Today.AddDays(-1), DateTime.Today.AddDays(1), reader, selectedLocal);
+
+        Assert.Contains(rows, item => item.Id == wholeSectorMessage);
+        Assert.Contains(rows, item => item.Id == selectedLocalMessage);
+        Assert.DoesNotContain(rows, item => item.Id == otherLocalMessage);
+    }
+
     private static int CreateUser(DatabaseTestContext context, string profile, string referenceCode, params string[] sectors)
     {
         var organization = new OrganizationRepository(context.Factory);

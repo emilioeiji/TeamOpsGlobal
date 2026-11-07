@@ -60,9 +60,6 @@ const I18N = {
         operatorRelief: "Relief (リリーフ)",
         labelAdditionalSectors: "Setores adicionais",
         additionalSectorsHint: "Use Ctrl para selecionar mais de um setor.",
-        labelOperatorPassword: "Senha do OperatorApp",
-        operatorPasswordCreateHint: "Mínimo de 6 caracteres, com maiúscula, minúscula e número.",
-        operatorPasswordEditHint: "Deixe em branco para manter a senha atual. Se o acesso ainda não existir, informe uma senha.",
         labelStart: "Data de Inicio",
         labelEnd: "Data de Termino",
         labelBirth: "Nascimento",
@@ -130,9 +127,6 @@ const I18N = {
         operatorRelief: "Relief (\u30ea\u30ea\u30fc\u30d5)",
         labelAdditionalSectors: "\u8ffd\u52a0\u30bb\u30af\u30bf\u30fc",
         additionalSectorsHint: "Ctrl \u30ad\u30fc\u3067\u8907\u6570\u9078\u629e\u3067\u304d\u307e\u3059\u3002",
-        labelOperatorPassword: "OperatorApp \u30d1\u30b9\u30ef\u30fc\u30c9",
-        operatorPasswordCreateHint: "6\u6587\u5b57\u4ee5\u4e0a\u3067\u5927\u6587\u5b57\u3001\u5c0f\u6587\u5b57\u3001\u6570\u5b57\u3092\u542b\u3081\u3066\u304f\u3060\u3055\u3044\u3002",
-        operatorPasswordEditHint: "\u73fe\u5728\u306e\u30d1\u30b9\u30ef\u30fc\u30c9\u3092\u4fdd\u6301\u3059\u308b\u5834\u5408\u306f\u7a7a\u6b04\u3002\u30a2\u30af\u30bb\u30b9\u672a\u4f5c\u6210\u306e\u5834\u5408\u306f\u5fc5\u9808\u3067\u3059\u3002",
         labelStart: "\u958b\u59cb\u65e5",
         labelEnd: "\u7d42\u4e86\u65e5",
         labelBirth: "\u751f\u5e74\u6708\u65e5",
@@ -403,7 +397,6 @@ function openEditModal(codigoFJ) {
     Array.from(document.getElementById("cmbAdditionalSectors").options).forEach(option => {
         option.selected = operator.sectorIds.includes(Number(option.value));
     });
-    document.getElementById("txtOperatorPassword").value = "";
     document.getElementById("dtStart").value = operator.startDate || "";
     document.getElementById("chkHasEnd").checked = !!operator.endDate;
     document.getElementById("dtEnd").value = operator.endDate || "";
@@ -445,7 +438,6 @@ function resetModalForm() {
     document.getElementById("cmbGroup").value = "";
     document.getElementById("cmbSector").value = "";
     document.getElementById("cmbOperatorType").value = "Regular";
-    document.getElementById("txtOperatorPassword").value = "";
     refreshAdditionalSectorOptions();
     document.getElementById("dtStart").value = "";
     document.getElementById("chkHasEnd").checked = false;
@@ -536,7 +528,7 @@ function buildPayload() {
         operatorType: document.getElementById("cmbOperatorType").value,
         sectorIds: Array.from(document.getElementById("cmbAdditionalSectors").selectedOptions)
             .map(option => Number(option.value)),
-        password: document.getElementById("txtOperatorPassword").value,
+        password: "",
         startDate: document.getElementById("dtStart").value,
         hasEndDate: document.getElementById("chkHasEnd").checked,
         endDate: document.getElementById("dtEnd").value,
@@ -556,9 +548,6 @@ function syncModeState() {
         ? t("modalEditSubtitle")(editingCodigoFJ)
         : t("modalCreateSubtitle");
     document.getElementById("btnSalvarModal").textContent = isEdit ? t("saveChanges") : t("register");
-    document.getElementById("operatorPasswordHint").textContent = isEdit
-        ? t("operatorPasswordEditHint")
-        : t("operatorPasswordCreateHint");
 }
 
 function localizedName(pt, jp) {

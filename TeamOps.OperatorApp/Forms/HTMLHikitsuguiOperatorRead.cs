@@ -21,7 +21,6 @@ namespace TeamOps.OperatorApp.Forms
         private readonly OperatorPresenceRepository _presenceRepo;
         private readonly HikitsuguiAttachmentRepository _attachRepo;
         private readonly HikitsuguiAudienceService _audienceService;
-        private readonly AuthenticationService _authenticationService;
         private readonly OperatorAccessService _operatorAccessService;
         private readonly object _sessionGate = new();
         private int? _authenticatedUserId;
@@ -40,7 +39,6 @@ namespace TeamOps.OperatorApp.Forms
             _presenceRepo = new OperatorPresenceRepository(Program.ConnectionFactory);
             _attachRepo = new HikitsuguiAttachmentRepository(Program.ConnectionFactory);
             _audienceService = new HikitsuguiAudienceService(Program.ConnectionFactory);
-            _authenticationService = new AuthenticationService(Program.ConnectionFactory);
             _operatorAccessService = new OperatorAccessService(Program.ConnectionFactory);
 
             InitializeWebView();
@@ -99,25 +97,42 @@ namespace TeamOps.OperatorApp.Forms
                 case "load_operator":
                     {
                         string fj = msg["fj"].GetString() ?? string.Empty;
-                        string password = msg.TryGetValue("password", out var passwordValue)
-                            ? passwordValue.GetString() ?? string.Empty
-                            : string.Empty;
 
                         RunBackground(() =>
                         {
                             var op = _operatorRepo.GetByCodigoFJ(fj);
-                            var auth = _authenticationService.Authenticate(ResolveLoginByCodigoFJ(fj), password, Environment.MachineName);
-                            if (op == null || !op.Status || !auth.Succeeded || auth.User == null
-                                || !string.Equals(auth.User.CodigoFJ, op.CodigoFJ, StringComparison.OrdinalIgnoreCase))
+                            if (op == null || !op.Status)
                             {
                                 ClearSession();
-                                SendJson("authentication_failed", new { errorCode = auth.ErrorCode });
+                                SendJson("operator_not_found", null);
                                 return;
                             }
 
-                            SetSession(auth.User.Id, op.CodigoFJ);
-                            var sectors = GetAllowedSectors(auth.User.Id, op.CodigoFJ);
-                            var locals = GetAllowedLocals(auth.User.Id, op.CodigoFJ);
+                            var assignedSectors = _operatorAccessService.GetSectors(op.CodigoFJ);
+                            var assignedSectorIds = assignedSectors.Select(item => item.Id).ToArray();
+                            var userId = GetActiveOperatorUserId(op.CodigoFJ)
+                                ?? _operatorAccessService.ProvisionOrUpdate(
+                                    op.CodigoFJ,
+                                    op.NameRomanji,
+                                    op.SectorId,
+                                    assignedSectorIds.Length == 0 ? [op.SectorId] : assignedSectorIds,
+                                    op.OperatorType,
+                                    null,
+                                    true);
+
+                            SetSession(userId, op.CodigoFJ);
+                            var sectors = GetAllowedSectors(userId, op.CodigoFJ);
+                            var sectorNames = sectors.ToDictionary(item => item.Id);
+                            var locals = GetAllowedLocals(userId, op.CodigoFJ)
+                                .Select(local => new
+                                {
+                                    local.Id,
+                                    local.NamePt,
+                                    local.NameJp,
+                                    local.SectorId,
+                                    SectorNamePt = sectorNames.TryGetValue(local.SectorId, out var sector) ? sector.NamePt : string.Empty,
+                                    SectorNameJp = sectorNames.TryGetValue(local.SectorId, out var sectorJp) ? sectorJp.NameJp : string.Empty
+                                });
 
                             SendJson("operator_loaded", new
                             {
@@ -184,13 +199,12 @@ namespace TeamOps.OperatorApp.Forms
                             DateTime dtFim = DateTime.Parse(msg["dtFinal"].GetString() ?? string.Empty).AddDays(1);
 
                             int localId = msg["localId"].GetInt32();
-                            int sectorId = msg.TryGetValue("sectorId", out var sectorValue) ? sectorValue.GetInt32() : 0;
-                            DemandAllowedSector(session.UserId, session.CodigoFJ, sectorId);
-                            if (localId > 0 && ResolveAllowedLocal(session.UserId, session.CodigoFJ, localId) == null)
+                            var local = ResolveAllowedLocal(session.UserId, session.CodigoFJ, localId);
+                            if (local == null)
                                 throw new UnauthorizedAccessException("Local fora do escopo autorizado.");
 
                             var lista = _hikRepo.GetForOperator(
-                                dtIni, dtFim, session.UserId, session.CodigoFJ, sectorId, localId);
+                                dtIni, dtFim, session.UserId, session.CodigoFJ, local.SectorId, localId);
                             ApplyReadStatus(lista, session.CodigoFJ);
 
                             SendJson("hikitsugui_list", lista);
@@ -354,13 +368,6 @@ namespace TeamOps.OperatorApp.Forms
             return _operatorAccessService.GetSectors(codigoFJ).Where(item => authorized.Contains(item.Id)).ToArray();
         }
 
-        private void DemandAllowedSector(int userId, string codigoFJ, int sectorId)
-        {
-            if (sectorId == 0) return;
-            if (!GetAllowedSectors(userId, codigoFJ).Any(item => item.Id == sectorId))
-                throw new UnauthorizedAccessException("Setor fora do escopo autorizado.");
-        }
-
         private void SetSession(int userId, string codigoFJ)
         {
             lock (_sessionGate)
@@ -421,16 +428,17 @@ namespace TeamOps.OperatorApp.Forms
             });
         }
 
-        private static string ResolveLoginByCodigoFJ(string codigoFJ)
+        private static int? GetActiveOperatorUserId(string codigoFJ)
         {
             using var conn = Program.ConnectionFactory.CreateOpenConnection();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-                SELECT Login FROM Users
-                WHERE CodigoFJ = @fj COLLATE NOCASE OR Login = @fj COLLATE NOCASE
+                SELECT Id FROM Users
+                WHERE CodigoFJ = @fj COLLATE NOCASE AND IsActive = 1
                 LIMIT 1;";
             cmd.Parameters.AddWithValue("@fj", (codigoFJ ?? string.Empty).Trim());
-            return cmd.ExecuteScalar()?.ToString() ?? codigoFJ ?? string.Empty;
+            var value = cmd.ExecuteScalar();
+            return value is null or DBNull ? null : Convert.ToInt32(value);
         }
 
         private static bool IsRegisteredAttachment(int hikitsuguiId, string? path)

@@ -301,9 +301,7 @@ namespace TeamOps.UI.Forms
             if (selectedSectors.Any(id => !authorizedSectors.Contains(id)))
                 throw new UnauthorizedAccessException(L("Existe setor fora do seu escopo autorizado.", "\u6a29\u9650\u7bc4\u56f2\u5916\u306e\u30bb\u30af\u30bf\u30fc\u304c\u542b\u307e\u308c\u3066\u3044\u307e\u3059\u3002"));
 
-            if (!isUpdate || !_operatorAccess.HasIdentity(codigoFJ))
-                PasswordPolicy.DemandStrong(msg.password);
-            else if (!string.IsNullOrWhiteSpace(msg.password))
+            if (!string.IsNullOrWhiteSpace(msg.password))
                 PasswordPolicy.DemandStrong(msg.password);
 
             if (!DateTime.TryParse(msg.startDate, out var startDate))

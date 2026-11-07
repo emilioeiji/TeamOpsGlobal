@@ -43,11 +43,15 @@ public sealed class OperatorAccessService
         int userId;
         if (user == null)
         {
-            PasswordPolicy.DemandStrong(password);
+            var internalCredential = string.IsNullOrWhiteSpace(password)
+                ? $"{Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32))}aA1"
+                : password;
+            if (!string.IsNullOrWhiteSpace(password))
+                PasswordPolicy.DemandStrong(password);
             var profileId = Scalar<int>(conn, transaction,
                 "SELECT Id FROM AccessProfiles WHERE Code = 'OP' COLLATE NOCASE AND IsActive = 1;");
             var rootId = OrganizationRootResolver.ResolveRequired(conn);
-            var hash = BCrypt.Net.BCrypt.HashPassword(password!, workFactor: 12);
+            var hash = BCrypt.Net.BCrypt.HashPassword(internalCredential, workFactor: 12);
             using var insert = conn.CreateCommand();
             insert.Transaction = transaction;
             insert.CommandText = @"
