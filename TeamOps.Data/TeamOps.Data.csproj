@@ -23,6 +23,7 @@
     <EmbeddedResource Include="Migrations\V2_0007_FeatureModules.sql" />
     <EmbeddedResource Include="Migrations\V2_0008_ProductionMonitor.sql" />
     <EmbeddedResource Include="Migrations\V2_0009_HaidaiSectorTopology.sql" />
+    <EmbeddedResource Include="Migrations\V2_0010_SectorCapabilities.sql" />
   </ItemGroup>
 
   <ItemGroup>

@@ -13,6 +13,7 @@ using TeamOps.Data.Repositories;
 using TeamOps.Data.Security;
 using TeamOps.Core.Security;
 using TeamOps.Config;
+using TeamOps.Services;
 
 namespace TeamOps.UI.Forms
 {
@@ -210,6 +211,13 @@ namespace TeamOps.UI.Forms
                     new { id = 1, namePt = "Inativo", nameJp = "非稼働" },
                     new { id = 3, namePt = "Parado", nameJp = "停止" },
                     new { id = 4, namePt = "Erro", nameJp = "エラー" }
+                },
+                sectorFeatures = new[]
+                {
+                    new { id = SectorFeatureCodes.ProductionGBareruImport, namePt = "Importacao Producao - formato G-Bareru", nameJp = "Production Import - G-Bareru format" },
+                    new { id = SectorFeatureCodes.ProductionDadImport, namePt = "Importacao Producao - formato DAD", nameJp = "Production Import - DAD format" },
+                    new { id = SectorFeatureCodes.ProductionCapacityForecast, namePt = "Previsao de capacidade", nameJp = "Capacity forecast" },
+                    new { id = SectorFeatureCodes.SobraDePeca, namePt = "Sobra de peca", nameJp = "Remaining parts" }
                 }
             };
         }
@@ -511,6 +519,7 @@ namespace TeamOps.UI.Forms
                 "machine" => conn.ExecuteScalar<int?>("SELECT SectorId FROM Machines WHERE Id = @id;", new { id }),
                 "machine_status" => conn.ExecuteScalar<int?>("SELECT SectorId FROM MachineStatuses WHERE Id = @id;", new { id }),
                 "production_procedure_time" => conn.ExecuteScalar<int?>("SELECT SectorId FROM ProductionProcedureTimes WHERE Id = @id;", new { id }),
+                "sector_capability" => conn.ExecuteScalar<int?>("SELECT SectorId FROM SectorCapabilities WHERE Id = @id;", new { id }),
                 _ => null
             };
 
@@ -583,6 +592,7 @@ namespace TeamOps.UI.Forms
                 ConfigureScope(CreateMachineAuditEntity(), AdminEntityScope.SectorOrGlobal, readOnly: true),
                 ConfigureScope(CreateMachineStatusEntity(), AdminEntityScope.SectorOrGlobal),
                 CreatePartCodeStyleEntity(),
+                ConfigureScope(CreateSectorCapabilityEntity(), AdminEntityScope.Sector),
                 ConfigureScope(CreateProductionProcedureTimeEntity(), AdminEntityScope.Sector),
                 CreateNameEntity(
                     "category", "production",
@@ -889,6 +899,101 @@ namespace TeamOps.UI.Forms
                         parameters.Add("@id", currentId.Value);
                     }
 
+                    return parameters;
+                }
+            };
+        }
+
+        private static AdminEntityDefinition CreateSectorCapabilityEntity()
+        {
+            return new AdminEntityDefinition
+            {
+                Key = "sector_capability",
+                Group = "production",
+                TitlePt = "Processos por Setor",
+                TitleJp = "Sector Processes",
+                DescriptionPt = "Define qual setor executa cada processo especifico sem depender do codigo ou ID do setor.",
+                DescriptionJp = "Assigns each specific process to a sector without depending on its code or ID.",
+                Fields =
+                {
+                    new AdminFieldDefinition("sectorId", "Setor", "Sector", "select", true, "sectors"),
+                    new AdminFieldDefinition("featureCode", "Processo", "Process", "select", true, "sectorFeatures"),
+                    new AdminFieldDefinition("isActive", "Ativo", "Active", "checkbox", false)
+                },
+                Columns =
+                {
+                    new AdminColumnDefinition("sectorNamePt", "sectorNameJp", "Setor", "Sector"),
+                    new AdminColumnDefinition("featureLabelPt", "featureLabelJp", "Processo", "Process"),
+                    new AdminColumnDefinition("activeLabelPt", "activeLabelJp", "Status", "Status")
+                },
+                QueryRows = conn => conn.Query(@"
+                    SELECT capability.Id AS id, capability.SectorId AS sectorId,
+                           capability.FeatureCode AS featureCode,
+                           sector.NamePt AS sectorNamePt,
+                           COALESCE(NULLIF(sector.NameJp, ''), sector.NamePt) AS sectorNameJp,
+                           CASE capability.FeatureCode
+                               WHEN 'production.import.gbareru' THEN 'Importacao Producao - formato G-Bareru'
+                               WHEN 'production.import.dad' THEN 'Importacao Producao - formato DAD'
+                               WHEN 'production.capacity-forecast' THEN 'Previsao de capacidade'
+                               WHEN 'sobra-de-peca' THEN 'Sobra de peca'
+                               ELSE capability.FeatureCode
+                           END AS featureLabelPt,
+                           CASE capability.FeatureCode
+                               WHEN 'production.import.gbareru' THEN 'Production Import - G-Bareru format'
+                               WHEN 'production.import.dad' THEN 'Production Import - DAD format'
+                               WHEN 'production.capacity-forecast' THEN 'Capacity forecast'
+                               WHEN 'sobra-de-peca' THEN 'Remaining parts'
+                               ELSE capability.FeatureCode
+                           END AS featureLabelJp,
+                           capability.IsActive AS isActive,
+                           CASE capability.IsActive WHEN 1 THEN 'Ativo' ELSE 'Inativo' END AS activeLabelPt,
+                           CASE capability.IsActive WHEN 1 THEN 'Active' ELSE 'Inactive' END AS activeLabelJp
+                    FROM SectorCapabilities capability
+                    JOIN Sectors sector ON sector.Id = capability.SectorId
+                    ORDER BY capability.FeatureCode, sector.NamePt;"),
+                InsertSql = @"
+                    INSERT INTO SectorCapabilities (SectorId, FeatureCode, IsActive, UpdatedAt)
+                    VALUES (@sectorId, @featureCode, @isActive, CURRENT_TIMESTAMP);",
+                UpdateSql = @"
+                    UPDATE SectorCapabilities
+                    SET SectorId = @sectorId, FeatureCode = @featureCode,
+                        IsActive = @isActive, UpdatedAt = CURRENT_TIMESTAMP
+                    WHERE Id = @id;",
+                DeleteSql = "DELETE FROM SectorCapabilities WHERE Id = @id;",
+                BuildParameters = (conn, values, currentId) =>
+                {
+                    var sectorId = ReadInt(values, "sectorId");
+                    var featureCode = ReadString(values, "featureCode").Trim().ToLowerInvariant();
+                    var isActive = ReadBool(values, "isActive", true);
+
+                    if (sectorId <= 0)
+                        throw new InvalidOperationException(L("Selecione um setor valido.", "Invalid sector."));
+                    if (!SectorFeatureCodes.All.Contains(featureCode, StringComparer.OrdinalIgnoreCase))
+                        throw new InvalidOperationException(L("Selecione um processo valido.", "Invalid process."));
+
+                    var duplicate = conn.ExecuteScalar<int>(@"
+                        SELECT COUNT(*) FROM SectorCapabilities
+                        WHERE SectorId = @sectorId
+                          AND FeatureCode = @featureCode COLLATE NOCASE
+                          AND (@currentId IS NULL OR Id <> @currentId);",
+                        new { sectorId, featureCode, currentId }) > 0;
+                    if (duplicate)
+                        throw new InvalidOperationException(L("Este processo ja esta associado ao setor.", "Process already assigned to this sector."));
+
+                    if (isActive && conn.ExecuteScalar<int>(@"
+                        SELECT COUNT(*) FROM SectorCapabilities
+                        WHERE FeatureCode = @featureCode COLLATE NOCASE
+                          AND IsActive = 1
+                          AND (@currentId IS NULL OR Id <> @currentId);",
+                        new { featureCode, currentId }) > 0)
+                        throw new InvalidOperationException(L("Desative a associacao atual deste processo antes de ativar outra.", "Deactivate the current process assignment before activating another one."));
+
+                    var parameters = new DynamicParameters();
+                    parameters.Add("@sectorId", sectorId);
+                    parameters.Add("@featureCode", featureCode);
+                    parameters.Add("@isActive", isActive ? 1 : 0);
+                    if (currentId.HasValue)
+                        parameters.Add("@id", currentId.Value);
                     return parameters;
                 }
             };

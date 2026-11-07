@@ -223,7 +223,7 @@ function normalizeLookups(lookups) {
     Object.keys(lookups || {}).forEach(key => {
         normalized[key] = (lookups[key] || []).map(item => ({
             ...item,
-            id: Number(item.id || 0),
+            id: normalizeLookupId(item.id),
             namePt: item.namePt || "",
             nameJp: item.nameJp || item.namePt || "",
             labelPt: item.labelPt || item.namePt || "",
@@ -233,6 +233,11 @@ function normalizeLookups(lookups) {
     });
 
     return normalized;
+}
+
+function normalizeLookupId(value) {
+    const text = String(value ?? "").trim();
+    return /^\d+$/.test(text) ? Number(text) : text;
 }
 
 function applyLocale() {
@@ -619,7 +624,7 @@ function renderField(entity, field, row) {
         const options = getLookupOptionsForField(entity, field, row)
             .map(item => {
                 const text = lookupOptionLabel(item);
-                const selected = Number(value) === Number(item.id) ? "selected" : "";
+                const selected = String(value) === String(item.id) ? "selected" : "";
                 return `<option value="${item.id}" ${selected}>${escapeHtml(text)}</option>`;
             })
             .join("");

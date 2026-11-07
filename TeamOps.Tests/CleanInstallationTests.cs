@@ -55,7 +55,7 @@ public sealed class CleanInstallationTests
         using var context = new DatabaseTestContext();
         using var conn = context.Factory.CreateOpenConnection();
 
-        Assert.Equal(9, conn.ExecuteScalar<int>("SELECT COUNT(*) FROM SchemaMigrations;"));
+        Assert.Equal(10, conn.ExecuteScalar<int>("SELECT COUNT(*) FROM SchemaMigrations;"));
         Assert.Equal(0, conn.ExecuteScalar<int>(@"
             SELECT COUNT(*) FROM sqlite_master
             WHERE type = 'table' AND name IN ('GroupLeaders', 'Assignments');"));
@@ -73,6 +73,11 @@ public sealed class CleanInstallationTests
             SELECT COUNT(*) FROM sqlite_master
             WHERE type = 'table'
               AND name IN ('HaidaiSharedSectorGroups', 'HaidaiSharedSectorMembers');"));
+        Assert.Equal(1, conn.ExecuteScalar<int>(@"
+            SELECT COUNT(*) FROM sqlite_master
+            WHERE type = 'table' AND name = 'SectorCapabilities';"));
+        Assert.Equal(4, conn.ExecuteScalar<int>(
+            "SELECT COUNT(*) FROM SectorCapabilities WHERE IsActive = 1;"));
         Assert.Equal(1, conn.ExecuteScalar<int>(@"
             SELECT COUNT(*) FROM pragma_table_info('Locals')
             WHERE name = 'ShortCode';"));

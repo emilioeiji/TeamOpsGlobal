@@ -27,9 +27,6 @@ namespace TeamOps.Services
             if (normalized is "" or "ALL" or "*")
                 return 0;
 
-            if (normalized == "GBARERU")
-                normalized = "G-BARERU";
-
             var sectors = LoadActiveSectors();
             if (int.TryParse(normalized, out var sectorId))
             {
@@ -68,7 +65,10 @@ namespace TeamOps.Services
         }
 
         private static string Normalize(string? value) =>
-            (value ?? string.Empty).Trim().ToUpperInvariant();
+            new((value ?? string.Empty)
+                .Where(char.IsLetterOrDigit)
+                .Select(char.ToUpperInvariant)
+                .ToArray());
 
         private sealed class SectorCatalogItem
         {

@@ -10,6 +10,7 @@ using TeamOps.Core.Entities;
 using TeamOps.Core.Security;
 using TeamOps.Data.Db;
 using TeamOps.Data.Security;
+using TeamOps.Services;
 
 namespace TeamOps.UI.Forms
 {
@@ -84,7 +85,7 @@ namespace TeamOps.UI.Forms
         private void LoadInitial()
         {
             using var conn = _factory.CreateOpenConnection();
-            var sectorId = ResolveGBareruSectorId(conn);
+            var sectorId = ResolveSobraDePecaSectorId();
             DemandView(sectorId);
             var filter = CreateDefaultFilter();
 
@@ -120,7 +121,7 @@ namespace TeamOps.UI.Forms
         private void SendRows(SobraReportFilter filter)
         {
             using var conn = _factory.CreateOpenConnection();
-            var sectorId = ResolveGBareruSectorId(conn);
+            var sectorId = ResolveSobraDePecaSectorId();
             DemandView(sectorId);
             var rows = conn.Query<SobraReportRow>(
                 @"
@@ -219,12 +220,8 @@ namespace TeamOps.UI.Forms
                 sectorId);
         }
 
-        private static int ResolveGBareruSectorId(System.Data.IDbConnection conn)
-        {
-            return conn.ExecuteScalar<int?>(
-                "SELECT Id FROM Sectors WHERE Code = 'G-BARERU' COLLATE NOCASE AND IsActive = 1;")
-                ?? throw new InvalidOperationException("Setor G-Bareru nao configurado.");
-        }
+        private int ResolveSobraDePecaSectorId() =>
+            new SectorCapabilityService(_factory).ResolveRequired(SectorFeatureCodes.SobraDePeca);
 
         private static SobraReportFilter ReadFilter(JsonElement root)
         {

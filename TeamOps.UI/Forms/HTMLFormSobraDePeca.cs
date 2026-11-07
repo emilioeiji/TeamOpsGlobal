@@ -9,6 +9,7 @@ using TeamOps.Core.Entities;
 using TeamOps.Core.Security;
 using TeamOps.Data.Db;
 using TeamOps.Data.Security;
+using TeamOps.Services;
 using TeamOps.UI.Forms.Models;
 
 namespace TeamOps.UI.Forms
@@ -78,7 +79,7 @@ namespace TeamOps.UI.Forms
         private void LoadInitialData()
         {
             using var conn = _factory.CreateOpenConnection();
-            var sectorId = ResolveGBareruSectorId(conn);
+            var sectorId = ResolveSobraDePecaSectorId();
             _authorization.Demand(
                 _currentUser.Id,
                 ModuleCodes.SobraDePeca,
@@ -155,7 +156,7 @@ namespace TeamOps.UI.Forms
                 ValidatePayloadLocalized(msg);
 
                 using var conn = _factory.CreateOpenConnection();
-                var sectorId = ResolveGBareruSectorId(conn);
+                var sectorId = ResolveSobraDePecaSectorId();
                 _authorization.Demand(
                     _currentUser.Id,
                     ModuleCodes.SobraDePeca,
@@ -292,12 +293,8 @@ namespace TeamOps.UI.Forms
             return conn.Query(sql, new { sectorId });
         }
 
-        private static int ResolveGBareruSectorId(System.Data.IDbConnection conn)
-        {
-            return conn.ExecuteScalar<int?>(
-                "SELECT Id FROM Sectors WHERE Code = 'G-BARERU' COLLATE NOCASE AND IsActive = 1;")
-                ?? throw new InvalidOperationException("Setor G-Bareru nao configurado.");
-        }
+        private int ResolveSobraDePecaSectorId() =>
+            new SectorCapabilityService(_factory).ResolveRequired(SectorFeatureCodes.SobraDePeca);
 
         private void PostJson(object payload)
         {

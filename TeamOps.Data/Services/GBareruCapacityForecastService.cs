@@ -5,13 +5,13 @@ using System.Globalization;
 using System.Linq;
 using Dapper;
 using TeamOps.Data.Db;
+using TeamOps.Services;
 using TeamOps.UI.Forms.Models;
 
 namespace TeamOps.UI.Services
 {
     public sealed class GBareruCapacityForecastService
     {
-        private const string GBareruSectorCode = "G-BARERU";
         private const string EciiCode = "ECII";
         private const string BunkatsuCode = "BUNKATSU";
         private const string DcsCode = "DCS";
@@ -114,16 +114,8 @@ namespace TeamOps.UI.Services
 
         private int ResolveGBareruSectorId()
         {
-            using var conn = _factory.CreateOpenConnection();
-            return conn.QuerySingleOrDefault<int>(
-                @"
-                    SELECT Id
-                    FROM Sectors
-                    WHERE IsActive = 1
-                      AND Code = @Code COLLATE NOCASE
-                    ORDER BY Id
-                    LIMIT 1;",
-                new { Code = GBareruSectorCode });
+            return new SectorCapabilityService(_factory)
+                .TryResolve(SectorFeatureCodes.ProductionCapacityForecast) ?? 0;
         }
 
         private Dictionary<string, double> LoadProcedureTimes(int sectorId, int localId)
