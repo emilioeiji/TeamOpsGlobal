@@ -69,12 +69,18 @@ function Test-ConfiguredLocation {
         [string]$Path,
         [ValidateSet('File', 'Directory')]
         [string]$Kind,
-        [switch]$Optional
+        [switch]$Optional,
+        [switch]$CreatedOnDemand
     )
 
     $exists = if ($Kind -eq 'File') { Test-Path -LiteralPath $Path -PathType Leaf } else { Test-Path -LiteralPath $Path -PathType Container }
     if ($exists) {
         Write-Check PASS "$Key disponivel: $Path"
+        return
+    }
+
+    if ($CreatedOnDemand) {
+        Write-Check WARN "$Key sera criado automaticamente no primeiro uso: $Path"
         return
     }
 
@@ -152,23 +158,29 @@ if ($databasePath.StartsWith('\\')) {
 
 Test-ConfiguredLocation -Key 'DatabasePath' -Path $databasePath -Kind File
 
-$directoryKeys = @(
-    'PRDirectory', 'CLDirectory', 'HikitsuguiAttachmentPath', 'OperatorScheduleDirectory',
-    'HaidaiExportDirectory', 'ProductionEventsDirectory', 'ProductionSourceEventsDirectory',
-    'ProductionSourceDatDirectory'
+$directoryDefinitions = @(
+    @{ Key = 'PRDirectory'; CreatedOnDemand = $true },
+    @{ Key = 'CLDirectory'; CreatedOnDemand = $true },
+    @{ Key = 'HikitsuguiAttachmentPath'; CreatedOnDemand = $false },
+    @{ Key = 'OperatorScheduleDirectory'; CreatedOnDemand = $false },
+    @{ Key = 'HaidaiExportDirectory'; CreatedOnDemand = $false },
+    @{ Key = 'ProductionEventsDirectory'; CreatedOnDemand = $false },
+    @{ Key = 'ProductionSourceEventsDirectory'; CreatedOnDemand = $false },
+    @{ Key = 'ProductionSourceDatDirectory'; CreatedOnDemand = $false }
 )
-foreach ($key in $directoryKeys) {
+foreach ($definition in $directoryDefinitions) {
+    $key = $definition.Key
     try {
         $resolved = Get-FullConfiguredPath -Value $settings[$key] -StorageRoot $storageRoot -ApplicationRoot $appRoot
-        Test-ConfiguredLocation -Key $key -Path $resolved -Kind Directory
+        Test-ConfiguredLocation -Key $key -Path $resolved -Kind Directory -CreatedOnDemand:$definition.CreatedOnDemand
     } catch {
         Write-Check FAIL "$key invalido: $($_.Exception.Message)"
     }
 }
 
 $fileDefinitions = @(
-    @{ Key = 'PRTemplate'; Optional = $false },
-    @{ Key = 'CLTemplate'; Optional = $false },
+    @{ Key = 'PRTemplate'; Optional = $false; BundledFile = 'ModeloPR.xlsx' },
+    @{ Key = 'CLTemplate'; Optional = $false; BundledFile = 'ModeloCL.xlsx' },
     @{ Key = 'ProductionImportBatchPath'; Optional = $true },
     @{ Key = 'Ec2AdministratorFilePath'; Optional = $true }
 )
@@ -180,7 +192,18 @@ foreach ($definition in $fileDefinitions) {
     }
     try {
         $resolved = Get-FullConfiguredPath -Value $settings[$key] -StorageRoot $storageRoot -ApplicationRoot $appRoot
-        Test-ConfiguredLocation -Key $key -Path $resolved -Kind File -Optional:$definition.Optional
+        if (Test-Path -LiteralPath $resolved -PathType Leaf) {
+            Test-ConfiguredLocation -Key $key -Path $resolved -Kind File -Optional:$definition.Optional
+        } elseif ($definition.ContainsKey('BundledFile')) {
+            $bundledPath = Join-Path $appRoot "Modelos\$($definition.BundledFile)"
+            if (Test-Path -LiteralPath $bundledPath -PathType Leaf) {
+                Write-Check PASS "$key sera provisionado pelo pacote: $bundledPath"
+            } else {
+                Write-Check FAIL "$key nao encontrado e modelo empacotado ausente: $bundledPath"
+            }
+        } else {
+            Test-ConfiguredLocation -Key $key -Path $resolved -Kind File -Optional:$definition.Optional
+        }
     } catch {
         Write-Check FAIL "$key invalido: $($_.Exception.Message)"
     }

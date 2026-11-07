@@ -187,13 +187,10 @@ namespace TeamOps.UI.Forms
 
         private string GenerateExcel(int documentId, DocumentInput input)
         {
-            var template = StoragePathResolver.GetRequiredPath(_isPr ? "PRTemplate" : "CLTemplate");
+            var template = ResolveTemplate(
+                _isPr ? "PRTemplate" : "CLTemplate",
+                _isPr ? "ModeloPR.xlsx" : "ModeloCL.xlsx");
             var directory = StoragePathResolver.GetRequiredPath(_isPr ? "PRDirectory" : "CLDirectory");
-
-            if (string.IsNullOrWhiteSpace(template) || !File.Exists(template))
-            {
-                throw new InvalidOperationException(L("Arquivo modelo nao encontrado.", "Template file not found."));
-            }
 
             Directory.CreateDirectory(directory);
             var finalPath = Path.Combine(directory, input.FileName);
@@ -233,6 +230,29 @@ namespace TeamOps.UI.Forms
             ExportOperators(wb, input.SectorId);
             wb.Save();
             return finalPath;
+        }
+
+        private static string ResolveTemplate(string settingKey, string bundledFileName)
+        {
+            var configuredPath = StoragePathResolver.GetRequiredPath(settingKey);
+            if (File.Exists(configuredPath))
+                return configuredPath;
+
+            var bundledPath = Path.Combine(AppContext.BaseDirectory, "Modelos", bundledFileName);
+            if (!File.Exists(bundledPath))
+            {
+                throw new InvalidOperationException(L(
+                    $"Arquivo modelo nao encontrado: {configuredPath}",
+                    $"Template file not found: {configuredPath}"));
+            }
+
+            var targetDirectory = Path.GetDirectoryName(configuredPath);
+            if (string.IsNullOrWhiteSpace(targetDirectory))
+                throw new InvalidOperationException(L("Caminho do modelo invalido.", "Invalid template path."));
+
+            Directory.CreateDirectory(targetDirectory);
+            File.Copy(bundledPath, configuredPath, overwrite: false);
+            return configuredPath;
         }
 
         private void ExportOperators(XLWorkbook wb, int sectorId)
