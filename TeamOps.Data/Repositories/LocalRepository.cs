@@ -33,7 +33,11 @@ namespace TeamOps.Data.Repositories
             var list = new List<Local>();
             using var conn = _factory.CreateOpenConnection();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT Id, NamePt, NameJp, SectorId FROM Locals ORDER BY Id";
+            cmd.CommandText = @"
+                SELECT Id, NamePt, NameJp, SectorId
+                FROM Locals
+                WHERE COALESCE(IsActive, 1) = 1
+                ORDER BY Id";
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
             {
@@ -59,6 +63,7 @@ namespace TeamOps.Data.Repositories
             SELECT Id, NamePt, NameJp, SectorId 
             FROM Locals 
             WHERE SectorId = @sectorId
+              AND COALESCE(IsActive, 1) = 1
             ORDER BY NamePt";
 
             cmd.Parameters.AddWithValue("@sectorId", sectorId);
@@ -85,7 +90,11 @@ namespace TeamOps.Data.Repositories
             using var conn = _factory.CreateOpenConnection();
             using var cmd = conn.CreateCommand();
 
-            cmd.CommandText = "SELECT Id FROM Locals WHERE SectorId = @sectorId";
+            cmd.CommandText = @"
+                SELECT Id
+                FROM Locals
+                WHERE SectorId = @sectorId
+                  AND COALESCE(IsActive, 1) = 1";
             cmd.Parameters.AddWithValue("@sectorId", sectorId);
 
             using var reader = cmd.ExecuteReader();
