@@ -2,6 +2,7 @@ using System;
 using System.Windows.Forms;
 using TeamOps.Core.Entities;
 using TeamOps.Data.Repositories;
+using TeamOps.Data.Security;
 
 namespace TeamOps.UI.Forms
 {
@@ -49,6 +50,16 @@ namespace TeamOps.UI.Forms
                 return;
             }
 
+            try
+            {
+                PasswordPolicy.DemandStrong(newPassword);
+            }
+            catch (ArgumentException ex)
+            {
+                lblMensagem.Text = ex.Message.Split(Environment.NewLine)[0];
+                return;
+            }
+
             var user = _userRepo.GetByLogin(login);
             if (user == null)
             {
@@ -62,7 +73,7 @@ namespace TeamOps.UI.Forms
                 return;
             }
 
-            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
+            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword, workFactor: 12);
             _userRepo.Update(user);
 
             MessageBox.Show(

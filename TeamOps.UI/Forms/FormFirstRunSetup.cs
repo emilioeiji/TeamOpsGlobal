@@ -40,7 +40,7 @@ namespace TeamOps.UI.Forms
             layout.SetColumnSpan(title, 2);
             AddRow(layout, 1, "Login", _login);
             AddRow(layout, 2, "Nome / 名前", _name);
-            AddRow(layout, 3, "Senha / パスワード", _password);
+            AddRow(layout, 3, "Senha (6+, A/a/0) / パスワード", _password);
             AddRow(layout, 4, "Confirmar / 確認", _confirmation);
             layout.Controls.Add(_message, 0, 5);
             layout.SetColumnSpan(_message, 2);

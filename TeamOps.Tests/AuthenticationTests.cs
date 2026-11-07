@@ -136,6 +136,7 @@ public sealed class AuthenticationTests
 
     [Theory]
     [InlineData("short")]
+    [InlineData("Ab12c")]
     [InlineData("alllowercase123!")]
     [InlineData("ALLUPPERCASE123!")]
     [InlineData("NoNumbersHere!")]
@@ -145,5 +146,18 @@ public sealed class AuthenticationTests
         Assert.Throws<ArgumentException>(() =>
             new FirstRunProvisioningService(context.Factory)
                 .ProvisionDirector("initial.director", "Initial Director", password));
+    }
+
+    [Fact]
+    public void Provisioning_AcceptsSixCharactersWithUpperLowerAndNumber()
+    {
+        using var context = new DatabaseTestContext();
+        var userId = new FirstRunProvisioningService(context.Factory)
+            .ProvisionDirector("initial.director", "Initial Director", "Abc123");
+
+        Assert.True(userId > 0);
+        Assert.True(new AuthenticationService(context.Factory)
+            .Authenticate("initial.director", "Abc123")
+            .Succeeded);
     }
 }
