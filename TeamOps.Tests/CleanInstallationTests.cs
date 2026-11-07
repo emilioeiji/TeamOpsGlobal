@@ -55,7 +55,7 @@ public sealed class CleanInstallationTests
         using var context = new DatabaseTestContext();
         using var conn = context.Factory.CreateOpenConnection();
 
-        Assert.Equal(10, conn.ExecuteScalar<int>("SELECT COUNT(*) FROM SchemaMigrations;"));
+        Assert.Equal(11, conn.ExecuteScalar<int>("SELECT COUNT(*) FROM SchemaMigrations;"));
         Assert.Equal(0, conn.ExecuteScalar<int>(@"
             SELECT COUNT(*) FROM sqlite_master
             WHERE type = 'table' AND name IN ('GroupLeaders', 'Assignments');"));

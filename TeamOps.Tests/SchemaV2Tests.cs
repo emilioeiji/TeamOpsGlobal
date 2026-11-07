@@ -15,7 +15,7 @@ public sealed class SchemaV2Tests
         using var conn = context.Factory.CreateOpenConnection();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = "SELECT group_concat(Version, ',') FROM (SELECT Version FROM SchemaMigrations ORDER BY Version);";
-        Assert.Equal("1,2,3,4,5,6,7,8,9,10", cmd.ExecuteScalar()?.ToString());
+        Assert.Equal("1,2,3,4,5,6,7,8,9,10,11", cmd.ExecuteScalar()?.ToString());
 
         cmd.CommandText = "PRAGMA foreign_key_check;";
         using var violations = cmd.ExecuteReader();
@@ -89,5 +89,23 @@ public sealed class SchemaV2Tests
 
         Assert.Throws<Microsoft.Data.Sqlite.SqliteException>(() => repository.MoveUnit(root.Id, unit.Id));
         Assert.Throws<Microsoft.Data.Sqlite.SqliteException>(() => repository.AddUnit("INVALID", "Invalid", "", dad.Id));
+    }
+
+    [Fact]
+    public void OrganizationTree_EnforcesOneRootAndRequiresParentForSectors()
+    {
+        using var context = new DatabaseTestContext();
+        using var conn = context.Factory.CreateOpenConnection();
+        using var cmd = conn.CreateCommand();
+
+        cmd.CommandText = @"
+            INSERT INTO OrganizationNodes (ParentId, NodeType, Code, NamePt, NameJp)
+            VALUES (NULL, 'Unit', 'SECOND-ROOT', 'Second root', '');";
+        Assert.Throws<Microsoft.Data.Sqlite.SqliteException>(() => cmd.ExecuteNonQuery());
+
+        cmd.CommandText = @"
+            INSERT INTO OrganizationNodes (ParentId, NodeType, Code, NamePt, NameJp)
+            VALUES (NULL, 'Sector', 'ORPHAN', 'Orphan', '');";
+        Assert.Throws<Microsoft.Data.Sqlite.SqliteException>(() => cmd.ExecuteNonQuery());
     }
 }

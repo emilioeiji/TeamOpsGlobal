@@ -113,6 +113,28 @@ public sealed class AuthorizationTests
             new UserAccessRepository(context.Factory).Configure(userId, "KL", dadNode.Id, [gBareruId]));
     }
 
+    [Fact]
+    public void CorruptReferenceCannotExpandAssignedSectorScope()
+    {
+        using var context = new DatabaseTestContext();
+        var userId = CreateUser(context, "KL", "5552", "DAD");
+        var organizations = new OrganizationRepository(context.Factory);
+        var root = organizations.GetByCode("5500")!;
+        var externalUnitId = organizations.AddUnit("EXTERNAL", "External", "", root.Id);
+
+        using (var conn = context.Factory.CreateOpenConnection())
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = "UPDATE Users SET ReferenceNodeId = @externalUnitId WHERE Id = @userId;";
+            cmd.Parameters.AddWithValue("@externalUnitId", externalUnitId);
+            cmd.Parameters.AddWithValue("@userId", userId);
+            cmd.ExecuteNonQuery();
+        }
+
+        var access = new AuthorizationService(context.Factory).GetContext(userId);
+        Assert.Empty(access.AuthorizedSectorIds);
+    }
+
     private static int CreateUser(DatabaseTestContext context, string profile, string referenceCode, params string[] sectorCodes)
     {
         var userId = CreateUnconfiguredUser(context);

@@ -44,7 +44,7 @@ namespace TeamOps.Data.Security
 
             var sectorIds = scopeMode == "OrganizationTree"
                 ? GetTreeSectorIds(conn, referenceNodeId)
-                : GetAssignedSectorIds(conn, userId);
+                : GetAssignedSectorIds(conn, userId, referenceNodeId);
 
             return new UserAccessContext
             {
@@ -150,16 +150,30 @@ namespace TeamOps.Data.Security
             return ReadIds(cmd);
         }
 
-        private static HashSet<int> GetAssignedSectorIds(Microsoft.Data.Sqlite.SqliteConnection conn, int userId)
+        private static HashSet<int> GetAssignedSectorIds(
+            Microsoft.Data.Sqlite.SqliteConnection conn,
+            int userId,
+            int referenceNodeId)
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
+                WITH RECURSIVE reference_scope(Id) AS (
+                    SELECT Id FROM OrganizationNodes
+                    WHERE Id = @referenceNodeId AND IsActive = 1
+                    UNION ALL
+                    SELECT child.Id
+                    FROM OrganizationNodes child
+                    JOIN reference_scope parent ON child.ParentId = parent.Id
+                    WHERE child.IsActive = 1
+                )
                 SELECT assignment.SectorId
                 FROM UserSectorAssignments assignment
                 JOIN Sectors sector ON sector.Id = assignment.SectorId AND sector.IsActive = 1
                 JOIN OrganizationNodes node ON node.Id = sector.OrganizationNodeId AND node.IsActive = 1
+                JOIN reference_scope ON reference_scope.Id = node.Id
                 WHERE assignment.UserId = @userId;";
             cmd.Parameters.AddWithValue("@userId", userId);
+            cmd.Parameters.AddWithValue("@referenceNodeId", referenceNodeId);
             return ReadIds(cmd);
         }
 

@@ -24,6 +24,7 @@
     <EmbeddedResource Include="Migrations\V2_0008_ProductionMonitor.sql" />
     <EmbeddedResource Include="Migrations\V2_0009_HaidaiSectorTopology.sql" />
     <EmbeddedResource Include="Migrations\V2_0010_SectorCapabilities.sql" />
+    <EmbeddedResource Include="Migrations\V2_0011_SecurityIntegrity.sql" />
   </ItemGroup>
 
   <ItemGroup>
