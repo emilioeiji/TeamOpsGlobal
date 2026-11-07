@@ -14,9 +14,9 @@ O cadastro de operador se relaciona com turno e setor. O login do usuario precis
 
 ## Niveis de acesso
 
-O sistema usa `AccessLevel` para liberar modulos. Administradores acessam cadastros e permissoes; liderancas acessam relatorios, presenca, producao e exportacoes; KL ou superior acessa modulos operacionais mais sensiveis.
+O sistema usa perfis com um unico cargo por usuario, uma matriz de permissoes por modulo/acao e escopo organizacional calculado. Diretor, Gerente e SV recebem setores descendentes da unidade de referencia; GL, KL e OP recebem somente os setores explicitamente associados.
 
-**Inferido pelo codigo:** a hierarquia numerica do enum permite comparar `AccessLevel >= nivel requerido`.
+A autorizacao efetiva exige simultaneamente permissao funcional e setor dentro do escopo. O backend repete a validacao mesmo quando a interface oculta a funcionalidade.
 
 ## Hikitsugui
 

@@ -394,7 +394,7 @@
 </ol>
 <p>Se o sistema nao abrir ou apresentar erro de banco/pasta, acione o suporte e informe a mensagem exibida.</p>
 <h4>Tela principal</h4>
-<p>A tela principal funciona como menu de acesso aos modulos. Os botoes disponiveis podem variar conforme seu nivel de acesso.</p>
+<p>A tela principal funciona como menu de acesso aos modulos. Os botoes disponiveis variam conforme o perfil, a matriz de permissoes e o escopo setorial.</p>
 <p>Informacoes exibidas no dashboard:</p>
 <ul>
 <li>Usuario logado.</li>
@@ -553,7 +553,7 @@
 <p>Acompanhamento de solicitacoes/controles relacionados a folga/licenca paga. Usa dados de operador, turno e motivos cadastrados.</p>
 <p>Use para acompanhar folgas/licencas, conferencias, Todoke e motivos. Dados incompletos de operador, turno ou motivo podem deixar o controle inconsistente.</p>
 <h5>Administracao</h5>
-<p>Modulo restrito para manter os cadastros base do sistema. Use para revisar turnos, grupos, setores, locais, maquinas, equipamentos, status de maquina, codigos visuais da producao, tempos de procedimento, categorias, motivos/tipos de follow, shain, pendencias de maquina e log do sistema.</p>
+<p>Modulo restrito para manter arvore organizacional, setores, cadastros base, processos por setor, auditoria, diagnostico de armazenamento e log do sistema.</p>
 <p>Operacoes principais:</p>
 <ul>
 <li>Selecione um cadastro na lateral esquerda.</li>
@@ -566,11 +566,11 @@
 </ul>
 <p>Para a documentacao completa do painel e dos botoes, consulte <code>docs/admin-panel.md</code>.</p>
 <h5>Controle de acesso</h5>
-<p>Modulo para usuarios, niveis de permissao e configuracoes de acesso. Uso restrito.</p>
+<p>Modulo para usuarios, perfis, matriz de permissoes e configuracoes de acesso. Uso restrito.</p>
 <p>Use para:</p>
 <ul>
 <li>Criar ou editar usuarios.</li>
-<li>Definir nivel de acesso.</li>
+<li>Definir um unico perfil, referencia organizacional e setores permitidos.</li>
 <li>Associar usuario ao <code>CodigoFJ</code> correto.</li>
 <li>Alterar senha quando necessario.</li>
 <li>Ativar, desativar ou revisar usuarios conforme permissao da tela.</li>
@@ -578,8 +578,8 @@
 <p>Cuidados:</p>
 <ul>
 <li>Senhas sao protegidas por BCrypt; nao ha consulta de senha original.</li>
-<li>Usuario sem <code>CodigoFJ</code> valido pode conseguir autenticar, mas nao abrir o dashboard corretamente.</li>
-<li>Alteracoes de nivel de acesso devem seguir autorizacao da lideranca/responsavel.</li>
+<li>A conta administrativa inicial pode operar Administracao e Controle de Acesso sem <code>CodigoFJ</code>; modulos operacionais exigem identidade FJ.</li>
+<li>Alteracoes de perfil, escopo ou permissoes invalidam as sessoes afetadas.</li>
 </ul>
 <h5>Aplicacao do operador</h5>
 <p>Aplicacao separada para leitura de Hikitsugui pelo operador.</p>
@@ -817,7 +817,7 @@
 <ul>
 <li><strong>Finalidade:</strong> gerenciar usuarios e permissoes.</li>
 <li><strong>Arquivos principais:</strong> <code>HTMLFormAccessControl.cs</code>, <code>FormAccessControl.cs</code>, <code>FormAddUser.cs</code>, <code>FormChangePassword.cs</code>, <code>ui/access-control/*</code>, <code>UserRepository.cs</code>.</li>
-<li><strong>Dependencias:</strong> <code>Users</code>, BCrypt, niveis <code>AccessLevel</code>.</li>
+<li><strong>Dependencias:</strong> <code>Users</code>, BCrypt, <code>AccessProfiles</code>, <code>ModulePermissions</code>, arvore organizacional e setores atribuidos.</li>
 <li><strong>Inputs:</strong> usuario, senha, nivel, CodigoFJ, troca de senha e comandos de ativacao/edicao conforme tela.</li>
 <li><strong>Outputs:</strong> usuarios, permissoes, senhas protegidas por BCrypt e contadores de usuarios/admins.</li>
 <li><strong>Riscos:</strong> usuario sem <code>CodigoFJ</code> valido nao abre dashboard corretamente.</li>
@@ -1281,10 +1281,9 @@
 <ul>
 <li><code>SqliteConnectionFactory</code>.</li>
 <li><code>DbInitializer</code> e <code>DbSeeder</code>.</li>
-<li><code>ProductionSchemaMigrator</code>.</li>
 <li>Repositorios por agregado/tabela.</li>
 <li>SQL externo em <code>Sql/Hikitsugui</code>, <code>Sql/paidleave</code> e <code>Sql/presence</code>.</li>
-<li>Migrations em <code>Migrations/InitialSchema.sql</code> e <code>Migrations/ProductionMonitor_Upgrade.sql</code>.</li>
+<li>Migrations versionadas do Schema V2 para organizacao, seguranca e modulos operacionais.</li>
 </ul>
 <h5>TeamOps.Config</h5>
 <p>Centraliza resolucao de caminhos. <code>AppPaths.GetDatabasePath</code> busca <code>DatabasePath</code> no <code>App.config</code>; se ausente, usa <code>%LOCALAPPDATA%\TeamOps\TeamOps\teamops.db</code> ou uma pasta <code>data</code> no modo portable.</p>
@@ -1300,7 +1299,7 @@
     App-&gt;&gt;Config: resolve DatabasePath
     App-&gt;&gt;Init: EnsureCreated()
     Init-&gt;&gt;DB: aplica schema/migrations
-    App-&gt;&gt;DB: SeedDefaultAdmin()
+    App-&gt;&gt;DB: verifica provisionamento inicial
     App-&gt;&gt;Login: ShowDialog()
     Login--&gt;&gt;App: usuario autenticado
     App-&gt;&gt;Dash: abre dashboard principal</code></pre>
@@ -1322,7 +1321,7 @@
 <li><code>ProductionImportCompletionFile</code>: <code>C:\TeamOps\Production\import.done</code></li>
 <li><code>ProductionImportTimeoutSeconds</code>: <code>180</code></li>
 </ul>
-<p>Em producao, esses caminhos podem apontar para compartilhamentos de rede ou drives mapeados. Isso torna rede, permissao e disponibilidade de pasta dependencias criticas.</p>
+<p>Em producao, os documentos e integracoes podem usar <code>StorageRoot</code> UNC. Unidades de rede mapeadas sao rejeitadas e <code>DatabasePath</code> deve permanecer local.</p>
 <h4>WebView2 e modulos HTML</h4>
 <p>Os forms HTML chamam <code>EnsureCoreWebView2Async</code>, configuram <code>SetVirtualHostNameToFolderMapping("app", ...)</code> e navegam para <code>https://app/index.html</code>. Os arquivos HTML sao copiados para o output via <code>TeamOps.UI.csproj</code>.</p>
 <p>Fluxo padrao:</p>
@@ -1371,14 +1370,14 @@
 </ul>
 <p>O dashboard abre os modulos por mensagens <code>open:*</code>, por exemplo <code>open:operadores</code>, <code>open:relatorios</code>, <code>open:presence</code>, <code>open:haidai</code>, <code>open:followup</code>, <code>open:tasks</code>, <code>open:mastercard</code>, <code>open:production</code>, <code>open:hikitsugui</code>, <code>open:hikitsugui_read</code>, <code>open:sobradepeca</code>, <code>open:pr</code>, <code>open:cl</code>, <code>open:yukyu</code>, <code>open:admin</code> e <code>open:accesscontrol</code>.</p>
 <h4>Controle de acesso</h4>
-<p>O dashboard consulta o usuario logado e compara <code>AccessLevel</code> antes de abrir modulos sensiveis. O acesso a atribuicoes, administracao e controle de acesso exige nivel administrativo. Relatorios, presenca, Haidai, tarefas e producao exigem nivel de lideranca. Follow-up, Master Card, Hikitsugui, Sobra de Peca, PR e CL exigem nivel KL ou superior.</p>
+<p>A autorizacao combina perfil, matriz de permissoes por modulo/acao e escopo organizacional. Diretor, Gerente e SV recebem a arvore descendente; GL, KL e OP recebem somente setores explicitamente associados. O backend repete a validacao mesmo quando a interface oculta uma funcionalidade.</p>
 <h4>Banco de dados</h4>
 <p>O banco usa SQLite com connection string:</p>
-<pre><code>Data Source=&lt;DatabasePath&gt;;Cache=Shared;Mode=ReadWriteCreate</code></pre>
+<pre><code>Data Source=&lt;DatabasePath&gt;;Mode=ReadWriteCreate;Pooling=True;Default Timeout=30</code></pre>
 <p>O schema inclui tabelas para operadores, turnos, grupos, setores, usuarios, locais, follow-up, Hikitsugui, anexos, PR, CL, maquinas, eventos de maquina, paid leave, presenca, agenda de operadores, logs, tarefas e historico de tarefas.</p>
 <p>Repositorios usam <code>SqliteConnectionFactory</code> e Dapper ou comandos <code>Microsoft.Data.Sqlite</code>.</p>
 <h4>Migrations e schema</h4>
-<p><code>InitialSchema.sql</code> cria as tabelas base. <code>ProductionMonitor_Upgrade.sql</code> adiciona campos e tabelas do monitor de producao. <code>ProductionSchemaMigrator.Ensure</code> tambem protege a evolucao do schema do monitor quando a importacao/consulta de producao roda.</p>
+<p><code>InitialSchema.sql</code> cria as tabelas base. As migrations <code>V2_*</code> versionam organizacao, identidade, audiencias, modulos operacionais, producao, topologia Haidai, capacidades setoriais e integridade. <code>DbInitializer</code> aplica cada versao uma unica vez e valida chaves estrangeiras.</p>
 <h4>Dependencias externas</h4>
 <ul>
 <li>Microsoft Edge WebView2 Runtime.</li>
@@ -1493,7 +1492,7 @@
 <summary>Troubleshooting <span>docs/troubleshooting.md</span></summary>
 <div class="markdown-doc">
 <h3>Troubleshooting</h3>
-<p>Este guia foca problemas plausiveis em ambiente industrial, especialmente quando o banco SQLite e pastas operacionais dependem de rede, compartilhamentos ou drives mapeados.</p>
+<p>Este guia foca problemas plausiveis em ambiente industrial, com SQLite local e pastas operacionais em armazenamento local ou compartilhamento UNC.</p>
 <h4>Sistema nao abre</h4>
 <p><strong>PROBLEMA:</strong> o TeamOps nao inicia ou fecha antes do login.</p>
 <p><strong>SINTOMA:</strong> erro ao abrir executavel, tela nao aparece, mensagem de banco/caminho/permissao.</p>
@@ -1647,9 +1646,9 @@
 <h4>Turnos, setores e operadores</h4>
 <p>O cadastro de operador se relaciona com turno e setor. O login do usuario precisa estar associado a um operador por <code>CodigoFJ</code>; caso contrario, o dashboard falha com "Operador nao encontrado".</p>
 <p><strong>Inferido pelo codigo:</strong> <code>CodigoFJ</code> e identificador importante para usuario, operador, tarefas e escala.</p>
-<h4>Niveis de acesso</h4>
-<p>O sistema usa <code>AccessLevel</code> para liberar modulos. Administradores acessam cadastros e permissoes; liderancas acessam relatorios, presenca, producao e exportacoes; KL ou superior acessa modulos operacionais mais sensiveis.</p>
-<p><strong>Inferido pelo codigo:</strong> a hierarquia numerica do enum permite comparar <code>AccessLevel &gt;= nivel requerido</code>.</p>
+<h4>Perfis e escopos de acesso</h4>
+<p>O sistema usa um unico perfil por usuario, matriz de permissoes por modulo/acao e escopo organizacional. Diretor, Gerente e SV usam a arvore descendente; GL, KL e OP usam somente setores explicitamente associados.</p>
+<p>A autorizacao efetiva exige permissao funcional e setor dentro do escopo.</p>
 <h4>Hikitsugui</h4>
 <p>Hikitsugui representa passagem de informacao entre turnos/liderancas/operadores. O dominio inclui registros, respostas, correcoes, leitura e anexos.</p>
 <p><strong>Inferido pelo codigo:</strong> existem fluxos separados para criar, ler como lider e ler como operador, indicando necessidade de rastreabilidade de leitura.</p>

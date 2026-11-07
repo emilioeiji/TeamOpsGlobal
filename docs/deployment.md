@@ -6,7 +6,7 @@
 - Microsoft Edge WebView2 Runtime instalado.
 - Acesso ao SQLite local configurado na estacao.
 - Permissao de leitura e escrita nas pastas operacionais.
-- Templates Excel necessarios para PR/CL.
+- Templates Excel de PR/CL incluidos no pacote publicado.
 - Compartilhamentos de rede estaveis, quando usados.
 
 ## Projetos publicaveis
@@ -25,6 +25,7 @@ Pontos de atencao:
 - Publicar todos os arquivos do output, incluindo `ui`, `Assets`, `App.config` e DLLs.
 - Validar que os arquivos HTML/JS/CSS foram copiados.
 - Manter icones e logos no output.
+- Manter a pasta `Modelos`; se o caminho configurado ainda nao existir, o TeamOps copia o modelo empacotado no primeiro uso sem sobrescrever personalizacoes existentes.
 - Publicar `TeamOps.OperatorApp` separadamente quando usado em estacoes de operador.
 
 ## Topologia de armazenamento aprovada
@@ -82,8 +83,8 @@ Executar a partir da raiz do repositorio:
 
 ```powershell
 dotnet test .\TeamOps.Tests\TeamOps.Tests.csproj -c Release
-dotnet publish .\TeamOps.UI\TeamOps.UI.csproj -c Release -r win-x86 --self-contained true -o .\artifacts\TeamOps.UI
-dotnet publish .\TeamOps.OperatorApp\TeamOps.OperatorApp.csproj -c Release -r win-x86 --self-contained true -o .\artifacts\TeamOps.OperatorApp
+dotnet publish .\TeamOps.UI\TeamOps.UI.csproj -c Release -r win-x64 --self-contained true -o .\artifacts\TeamOps.UI
+dotnet publish .\TeamOps.OperatorApp\TeamOps.OperatorApp.csproj -c Release -r win-x64 --self-contained true -o .\artifacts\TeamOps.OperatorApp
 ```
 
 Aplicar os modelos de configuracao no pacote publicado, preservando os nomes esperados pelo runtime: `TeamOps.UI.dll.config` e `TeamOps.OperatorApp.dll.config`.
@@ -105,6 +106,8 @@ Durante uma janela controlada de homologacao, confirmar tambem escrita na raiz U
 ```
 
 O teste de escrita cria e remove somente um arquivo temporario com prefixo `.teamops-write-probe-`. Qualquer item `FAIL` bloqueia a implantacao. Itens `WARN` precisam ser avaliados e registrados.
+
+As pastas de saida `PR` e `CL` podem aparecer como aviso antes do primeiro uso, pois sao criadas automaticamente. Os modelos empacotados devem aparecer como aprovados mesmo quando ainda nao foram copiados para `StorageRoot`.
 
 ## WebView2
 

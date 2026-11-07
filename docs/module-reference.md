@@ -185,7 +185,7 @@
 
 - **Finalidade:** gerenciar usuarios e permissoes.
 - **Arquivos principais:** `HTMLFormAccessControl.cs`, `FormAccessControl.cs`, `FormAddUser.cs`, `FormChangePassword.cs`, `ui/access-control/*`, `UserRepository.cs`.
-- **Dependencias:** `Users`, BCrypt, niveis `AccessLevel`.
+- **Dependencias:** `Users`, BCrypt, `AccessProfiles`, `ModulePermissions`, arvore organizacional e atribuicoes explicitas de setor.
 - **Inputs:** usuario, senha, nivel, CodigoFJ, troca de senha e comandos de ativacao/edicao conforme tela.
 - **Outputs:** usuarios, permissoes, senhas protegidas por BCrypt e contadores de usuarios/admins.
 - **Riscos:** usuario sem `CodigoFJ` valido nao abre dashboard corretamente.

@@ -29,7 +29,7 @@ Aplicacao principal. Contem o dashboard WinForms/WebView2, forms tradicionais e 
 Responsabilidades:
 
 - Login e abertura do dashboard.
-- Controle de acesso por nivel.
+- Controle de acesso pela matriz central de permissoes e escopo organizacional.
 - Hospedagem dos modulos HTML via WebView2.
 - Integracao com repositorios e servicos.
 - Importacao/exportacao de arquivos operacionais.
@@ -49,10 +49,9 @@ Camada de persistencia. Contem:
 
 - `SqliteConnectionFactory`.
 - `DbInitializer` e `DbSeeder`.
-- `ProductionSchemaMigrator`.
 - Repositorios por agregado/tabela.
 - SQL externo em `Sql/Hikitsugui`, `Sql/paidleave` e `Sql/presence`.
-- Migrations versionadas do Schema V2 e evolucao idempotente do monitor por `ProductionSchemaMigrator`.
+- Migrations versionadas do Schema V2, incluindo producao, topologia Haidai, capacidades setoriais e integridade de seguranca.
 
 ### TeamOps.Config
 
@@ -157,7 +156,7 @@ O dashboard abre os modulos por mensagens `open:*`, por exemplo `open:operadores
 
 ## Controle de acesso
 
-A fonte de verdade e o Schema V2: perfis hierarquicos, `ModulePermissions`, referencia na arvore e atribuicoes explicitas de setor. A camada de autorizacao combina permissao funcional e escopo organizacional em cada operacao protegida. O nivel numerico legado existe apenas para compatibilidade temporaria.
+A fonte de verdade e o Schema V2: perfis hierarquicos, `ModulePermissions`, referencia na arvore e atribuicoes explicitas de setor. A camada de autorizacao combina permissao funcional e escopo organizacional em cada operacao protegida. Nao existe coluna ou comparacao legada de `AccessLevel`.
 
 `SessionVersion` permite revogar sessoes apos mudanca de senha ou acesso. O dashboard valida a versao autenticada periodicamente e antes de processar comandos.
 
@@ -175,7 +174,9 @@ Repositorios usam `SqliteConnectionFactory` e Dapper ou comandos `Microsoft.Data
 
 ## Migrations e schema
 
-`InitialSchema.sql` cria as tabelas operacionais base. As migrations `V2_*` evoluem organizacao, identidade, audiencias e escopos. `ProductionSchemaMigrator.Ensure` e a fonte unica para evolucao idempotente do monitor de producao; scripts historicos duplicados foram removidos.
+`InitialSchema.sql` cria as tabelas operacionais base. As migrations `V2_*` evoluem organizacao, identidade, audiencias, escopos, modulos operacionais, monitor de producao, topologia Haidai, capacidades setoriais e restricoes de integridade. `DbInitializer` aplica cada versao uma unica vez e valida as chaves estrangeiras ao terminar.
+
+`SectorCapabilities` associa processos operacionais a setores por ID. Dessa forma, importadores, forecast e Sobra de Peca preservam suas regras especificas sem depender do codigo ou do ID historico do setor. As associacoes sao mantidas em **Admin > Processos por Setor**.
 
 ## Dependencias externas
 

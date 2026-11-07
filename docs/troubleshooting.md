@@ -158,12 +158,12 @@ Este guia foca problemas plausiveis em ambiente industrial, com SQLite local e p
 
 **COMO RESOLVER:**
 
-1. Confirmar existencia dos templates em `C:\TeamOps\Modelos`.
+1. Confirmar os templates em `C:\TeamOps\Modelos` ou, antes do primeiro uso, em `Modelos` ao lado do executavel publicado.
 2. Confirmar permissao de escrita nas pastas `PR` e `CL`.
 3. Fechar arquivos Excel abertos que possam estar bloqueando.
 4. Restaurar template padrao se foi alterado/removido.
 
-**COMO PREVENIR:** controlar alteracoes nos templates e manter backup dos modelos.
+**COMO PREVENIR:** copiar o pacote completo, incluindo `Modelos`, controlar alteracoes nos templates personalizados e manter backup dos modelos.
 
 ## Anexos do Hikitsugui nao abrem
 

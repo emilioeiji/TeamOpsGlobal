@@ -212,7 +212,7 @@ Use para acompanhar folgas/licencas, conferencias, Todoke e motivos. Dados incom
 
 ### Administracao
 
-Modulo restrito para manter os cadastros base do sistema. Use para revisar turnos, grupos, setores, locais, maquinas, equipamentos, status de maquina, codigos visuais da producao, tempos de procedimento, categorias, motivos/tipos de follow, shain, pendencias de maquina e log do sistema.
+Modulo restrito para manter os cadastros base do sistema. Use para revisar a arvore organizacional, setores, turnos, grupos, locais, maquinas, equipamentos, status de maquina, processos por setor, codigos visuais da producao, tempos de procedimento, categorias, motivos/tipos de follow, shain, auditoria, diagnostico de armazenamento e log do sistema.
 
 Operacoes principais:
 
@@ -223,17 +223,21 @@ Operacoes principais:
 - Use o icone de lixeira para excluir uma linha, apos confirmar.
 - Em telas somente leitura, como **Pendencias de Maquina** e **Log do Sistema**, os botoes de novo, editar e excluir ficam indisponiveis.
 - No **Log do Sistema**, preencha os filtros de data, usuario, modulo ou acao e clique em **Atualizar**.
+- Em **Processos por Setor**, associe cada importador, forecast ou Sobra de Peca ao setor responsavel. Desative a associacao atual antes de ativar o mesmo processo em outro setor.
 
 Para a documentacao completa do painel e dos botoes, consulte `docs/admin-panel.md`.
 
 ### Controle de acesso
 
-Modulo para usuarios, niveis de permissao e configuracoes de acesso. Uso restrito.
+Modulo para usuarios, perfis, matriz de permissoes e configuracoes de acesso. Uso restrito.
 
 Use para:
 
 - Criar ou editar usuarios.
-- Definir nivel de acesso.
+- Definir um unico perfil/cargo.
+- Definir a unidade ou setor de referencia.
+- Associar os setores permitidos para GL, KL e OP.
+- Ajustar a matriz de permissoes por modulo e acao, quando autorizado.
 - Associar usuario ao `CodigoFJ` correto.
 - Alterar senha quando necessario.
 - Ativar, desativar ou revisar usuarios conforme permissao da tela.
@@ -241,8 +245,8 @@ Use para:
 Cuidados:
 
 - Senhas sao protegidas por BCrypt; nao ha consulta de senha original.
-- Usuario sem `CodigoFJ` valido pode conseguir autenticar, mas nao abrir o dashboard corretamente.
-- Alteracoes de nivel de acesso devem seguir autorizacao da lideranca/responsavel.
+- A conta administrativa inicial pode operar Administracao e Controle de Acesso sem `CodigoFJ`; modulos operacionais exigem identidade FJ associada.
+- Alteracoes de perfil, escopo e permissoes invalidam as sessoes afetadas e devem seguir autorizacao da lideranca responsavel.
 
 ### Aplicacao do operador
 
