@@ -699,6 +699,13 @@ function getLookupOptionsForField(entity, field, row) {
         }
     }
 
+    if (entity.key === "local" && field.key === "haidaiAreaId") {
+        const sectorId = Number(document.querySelector('[data-field="sectorId"]')?.value || row?.sectorId || 0);
+        if (sectorId > 0) {
+            return items.filter(item => Number(item.sectorId || 0) === sectorId);
+        }
+    }
+
     return items;
 }
 
@@ -726,6 +733,22 @@ function attachModalBehaviors(entity, row) {
     if (entity.key === "local") {
         const nameField = document.querySelector('[data-field="namePt"]');
         const shortCodeField = document.querySelector('[data-field="shortCode"]');
+        const sectorField = document.querySelector('[data-field="sectorId"]');
+        const areaField = document.querySelector('[data-field="haidaiAreaId"]');
+
+        const refreshAreaOptions = () => {
+            if (!areaField) return;
+            const selected = Number(areaField.value || row?.haidaiAreaId || 0);
+            const options = getLookupOptionsForField(entity, { key: "haidaiAreaId", lookupKey: "haidaiAreas" }, row);
+            areaField.innerHTML = `
+                <option value="0">${escapeHtml(t("selectPlaceholder"))}</option>
+                ${options.map(item => `<option value="${item.id}" ${Number(item.id) === selected ? "selected" : ""}>${escapeHtml(lookupOptionLabel(item))}</option>`).join("")}
+            `;
+            if (selected > 0 && !options.some(item => Number(item.id) === selected)) areaField.value = "0";
+        };
+
+        sectorField?.addEventListener("change", refreshAreaOptions);
+        refreshAreaOptions();
 
         if (shortCodeField) {
             shortCodeField.addEventListener("input", () => {

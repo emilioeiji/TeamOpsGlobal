@@ -184,6 +184,21 @@ namespace TeamOps.UI.Forms
                         WHERE l.SectorId IN @authorizedSectorIds
                         ORDER BY l.SectorId, l.NamePt, l.Id;"
                     , new { authorizedSectorIds }).ToList(),
+                haidaiAreas = conn.Query(
+                    @"
+                        SELECT
+                            a.Id AS id,
+                            a.SectorId AS sectorId,
+                            a.Code AS code,
+                            a.NamePt AS namePt,
+                            COALESCE(NULLIF(a.NameJp, ''), a.NamePt) AS nameJp,
+                            COALESCE(s.NamePt, '') || ' - ' || a.Code || ' - ' || a.NamePt AS labelPt,
+                            COALESCE(NULLIF(s.NameJp, ''), s.NamePt, '') || ' - ' || a.Code || ' - ' || COALESCE(NULLIF(a.NameJp, ''), a.NamePt) AS labelJp
+                        FROM HaidaiAreas a
+                        LEFT JOIN Sectors s ON s.Id = a.SectorId
+                        WHERE a.SectorId IN @authorizedSectorIds
+                        ORDER BY a.SectorId, a.SortOrder, a.Id;"
+                    , new { authorizedSectorIds }).ToList(),
                 organizationUnits = conn.Query(
                     @"
                         SELECT Id AS id, Code AS code, NamePt AS namePt,
@@ -516,6 +531,7 @@ namespace TeamOps.UI.Forms
             {
                 "sector" => conn.ExecuteScalar<int?>("SELECT Id FROM Sectors WHERE Id = @id;", new { id }),
                 "local" => conn.ExecuteScalar<int?>("SELECT SectorId FROM Locals WHERE Id = @id;", new { id }),
+                "haidai_area" => conn.ExecuteScalar<int?>("SELECT SectorId FROM HaidaiAreas WHERE Id = @id;", new { id }),
                 "machine" => conn.ExecuteScalar<int?>("SELECT SectorId FROM Machines WHERE Id = @id;", new { id }),
                 "machine_status" => conn.ExecuteScalar<int?>("SELECT SectorId FROM MachineStatuses WHERE Id = @id;", new { id }),
                 "production_procedure_time" => conn.ExecuteScalar<int?>("SELECT SectorId FROM ProductionProcedureTimes WHERE Id = @id;", new { id }),
@@ -581,6 +597,7 @@ namespace TeamOps.UI.Forms
                     "Setores exibidos nas leituras, filtros e presencas.",
                     "\u8aad\u307f\u53d6\u308a\u3001\u30d5\u30a3\u30eb\u30bf\u3001\u51fa\u5e2d\u7ba1\u7406\u3067\u4f7f\u3046\u30bb\u30af\u30bf\u30fc\u3067\u3059\u3002",
                     "Sectors"), AdminEntityScope.Sector, readOnly: true),
+                ConfigureScope(CreateHaidaiAreaEntity(), AdminEntityScope.Sector),
                 ConfigureScope(CreateLocalEntity(), AdminEntityScope.Sector),
                 CreateNameEntity(
                     "equipment", "production",
@@ -1197,7 +1214,10 @@ namespace TeamOps.UI.Forms
                     new AdminFieldDefinition("namePt", "Nome PT", "\u540d\u79f0 PT", "text", true),
                     new AdminFieldDefinition("nameJp", "Nome JP", "\u540d\u79f0 JP", "text", true),
                     new AdminFieldDefinition("shortCode", "Codigo Curto", "\u7565\u79f0\u30b3\u30fc\u30c9", "text", true),
-                    new AdminFieldDefinition("sectorId", "Setor", "\u30bb\u30af\u30bf\u30fc", "select", true, "sectors")
+                    new AdminFieldDefinition("sectorId", "Setor", "\u30bb\u30af\u30bf\u30fc", "select", true, "sectors"),
+                    new AdminFieldDefinition("haidaiAreaId", "Area Haidai", "Haidai Area", "select", true, "haidaiAreas"),
+                    new AdminFieldDefinition("sortOrder", "Ordem na area", "Display order", "number", true),
+                    new AdminFieldDefinition("isActive", "Ativo", "Active", "checkbox", false)
                 },
                 Columns =
                 {
@@ -1205,6 +1225,9 @@ namespace TeamOps.UI.Forms
                     new AdminColumnDefinition("shortCode", null, "Codigo", "\u30b3\u30fc\u30c9"),
                     new AdminColumnDefinition("namePt", "nameJp", "Nome", "\u540d\u79f0"),
                     new AdminColumnDefinition("sectorNamePt", "sectorNameJp", "Setor", "\u30bb\u30af\u30bf\u30fc"),
+                    new AdminColumnDefinition("areaNamePt", "areaNameJp", "Area Haidai", "Haidai Area"),
+                    new AdminColumnDefinition("sortOrder", null, "Ordem", "Order"),
+                    new AdminColumnDefinition("activeLabelPt", "activeLabelJp", "Status", "Status"),
                     new AdminColumnDefinition("machineCount", null, "Maquinas", "\u8a2d\u5099\u6570")
                 },
                 QueryRows = conn => conn.Query(
@@ -1215,17 +1238,26 @@ namespace TeamOps.UI.Forms
                             COALESCE(l.NameJp, '') AS nameJp,
                             COALESCE(NULLIF(l.ShortCode, ''), NULLIF(l.NamePt, ''), NULLIF(l.NameJp, ''), 'L' || l.Id) AS shortCode,
                             l.SectorId AS sectorId,
+                            l.HaidaiAreaId AS haidaiAreaId,
+                            COALESCE(l.SortOrder, 0) AS sortOrder,
+                            COALESCE(l.IsActive, 1) AS isActive,
                             COALESCE(s.NamePt, '') AS sectorNamePt,
                             COALESCE(NULLIF(s.NameJp, ''), s.NamePt, '') AS sectorNameJp,
+                            COALESCE(a.NamePt, '') AS areaNamePt,
+                            COALESCE(NULLIF(a.NameJp, ''), a.NamePt, '') AS areaNameJp,
+                            CASE COALESCE(l.IsActive, 1) WHEN 1 THEN 'Ativo' ELSE 'Inativo' END AS activeLabelPt,
+                            CASE COALESCE(l.IsActive, 1) WHEN 1 THEN 'Active' ELSE 'Inactive' END AS activeLabelJp,
                             COUNT(m.Id) AS machineCount
                         FROM Locals l
                         LEFT JOIN Sectors s ON s.Id = l.SectorId
+                        LEFT JOIN HaidaiAreas a ON a.Id = l.HaidaiAreaId
                         LEFT JOIN Machines m ON m.LocalId = l.Id AND COALESCE(m.IsActive, 1) = 1
-                        GROUP BY l.Id, l.NamePt, l.NameJp, l.ShortCode, l.SectorId, s.NamePt, s.NameJp
-                        ORDER BY l.SectorId, shortCode, l.Id;"
+                        GROUP BY l.Id, l.NamePt, l.NameJp, l.ShortCode, l.SectorId, l.HaidaiAreaId,
+                                 l.SortOrder, l.IsActive, s.NamePt, s.NameJp, a.NamePt, a.NameJp
+                        ORDER BY l.SectorId, COALESCE(a.SortOrder, 0), COALESCE(l.SortOrder, 0), l.Id;"
                 ),
-                InsertSql = "INSERT INTO Locals (NamePt, NameJp, ShortCode, SectorId) VALUES (@namePt, @nameJp, @shortCode, @sectorId);",
-                UpdateSql = "UPDATE Locals SET NamePt = @namePt, NameJp = @nameJp, ShortCode = @shortCode, SectorId = @sectorId WHERE Id = @id;",
+                InsertSql = "INSERT INTO Locals (NamePt, NameJp, ShortCode, SectorId, HaidaiAreaId, SortOrder, IsActive) VALUES (@namePt, @nameJp, @shortCode, @sectorId, @haidaiAreaId, @sortOrder, @isActive);",
+                UpdateSql = "UPDATE Locals SET NamePt = @namePt, NameJp = @nameJp, ShortCode = @shortCode, SectorId = @sectorId, HaidaiAreaId = @haidaiAreaId, SortOrder = @sortOrder, IsActive = @isActive WHERE Id = @id;",
                 DeleteSql = "DELETE FROM Locals WHERE Id = @id;",
                 BuildParameters = (conn, values, currentId) =>
                 {
@@ -1233,6 +1265,9 @@ namespace TeamOps.UI.Forms
                     var nameJp = ReadString(values, "nameJp").Trim();
                     var shortCode = ReadString(values, "shortCode").Trim();
                     var sectorId = ReadInt(values, "sectorId");
+                    var haidaiAreaId = ReadInt(values, "haidaiAreaId");
+                    var sortOrder = ReadInt(values, "sortOrder");
+                    var isActive = ReadBool(values, "isActive", true);
 
                     if (string.IsNullOrWhiteSpace(namePt) || string.IsNullOrWhiteSpace(nameJp))
                         throw new InvalidOperationException(L("Preencha os dois campos de nome.", "\u4e21\u65b9\u306e\u540d\u79f0\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002"));
@@ -1242,6 +1277,10 @@ namespace TeamOps.UI.Forms
 
                     if (sectorId <= 0)
                         throw new InvalidOperationException(L("Selecione um setor valido.", "\u6709\u52b9\u306a\u30bb\u30af\u30bf\u30fc\u3092\u9078\u629e\u3057\u3066\u304f\u3060\u3055\u3044\u3002"));
+
+                    var areaSectorId = conn.ExecuteScalar<int?>("SELECT SectorId FROM HaidaiAreas WHERE Id = @haidaiAreaId AND IsActive = 1;", new { haidaiAreaId });
+                    if (!areaSectorId.HasValue || areaSectorId.Value != sectorId)
+                        throw new InvalidOperationException(L("Selecione uma area Haidai ativa do mesmo setor.", "Select a Haidai area from the same sector."));
 
                     var duplicateShortCode = conn.ExecuteScalar<int>(
                         @"
@@ -1266,10 +1305,78 @@ namespace TeamOps.UI.Forms
                     parameters.Add("@nameJp", nameJp);
                     parameters.Add("@shortCode", shortCode);
                     parameters.Add("@sectorId", sectorId);
+                    parameters.Add("@haidaiAreaId", haidaiAreaId);
+                    parameters.Add("@sortOrder", sortOrder);
+                    parameters.Add("@isActive", isActive ? 1 : 0);
                     if (currentId.HasValue)
                     {
                         parameters.Add("@id", currentId.Value);
                     }
+                    return parameters;
+                }
+            };
+        }
+
+        private static AdminEntityDefinition CreateHaidaiAreaEntity()
+        {
+            return new AdminEntityDefinition
+            {
+                Key = "haidai_area",
+                Group = "core",
+                TitlePt = "Areas do Haidai",
+                TitleJp = "Haidai Areas",
+                DescriptionPt = "Areas dinamicas exibidas na TV. A ordem, ativacao e os locais associados controlam a proxima exportacao.",
+                DescriptionJp = "TV display areas, order, active state and associated locations.",
+                Fields =
+                {
+                    new AdminFieldDefinition("code", "Codigo", "Code", "text", true),
+                    new AdminFieldDefinition("namePt", "Nome PT", "Name PT", "text", true),
+                    new AdminFieldDefinition("nameJp", "Nome JP", "Name JP", "text", false),
+                    new AdminFieldDefinition("sectorId", "Setor", "Sector", "select", true, "sectors"),
+                    new AdminFieldDefinition("sortOrder", "Ordem de exibicao", "Display order", "number", true),
+                    new AdminFieldDefinition("isActive", "Ativa", "Active", "checkbox", false)
+                },
+                Columns =
+                {
+                    new AdminColumnDefinition("code", null, "Codigo", "Code"),
+                    new AdminColumnDefinition("namePt", "nameJp", "Nome", "Name"),
+                    new AdminColumnDefinition("sectorNamePt", "sectorNameJp", "Setor", "Sector"),
+                    new AdminColumnDefinition("sortOrder", null, "Ordem", "Order"),
+                    new AdminColumnDefinition("localCount", null, "Locais", "Locations"),
+                    new AdminColumnDefinition("activeLabelPt", "activeLabelJp", "Status", "Status")
+                },
+                QueryRows = conn => conn.Query(@"
+                    SELECT a.Id AS id, a.Code AS code, a.NamePt AS namePt, a.NameJp AS nameJp,
+                           a.SectorId AS sectorId, a.SortOrder AS sortOrder, a.IsActive AS isActive,
+                           s.NamePt AS sectorNamePt, COALESCE(NULLIF(s.NameJp, ''), s.NamePt) AS sectorNameJp,
+                           COUNT(l.Id) AS localCount,
+                           CASE a.IsActive WHEN 1 THEN 'Ativa' ELSE 'Inativa' END AS activeLabelPt,
+                           CASE a.IsActive WHEN 1 THEN 'Active' ELSE 'Inactive' END AS activeLabelJp
+                    FROM HaidaiAreas a
+                    JOIN Sectors s ON s.Id = a.SectorId
+                    LEFT JOIN Locals l ON l.HaidaiAreaId = a.Id
+                    GROUP BY a.Id, a.Code, a.NamePt, a.NameJp, a.SectorId, a.SortOrder, a.IsActive, s.NamePt, s.NameJp
+                    ORDER BY a.SectorId, a.SortOrder, a.Id;"),
+                InsertSql = "INSERT INTO HaidaiAreas (SectorId, Code, NamePt, NameJp, SortOrder, IsActive) VALUES (@sectorId, @code, @namePt, @nameJp, @sortOrder, @isActive);",
+                UpdateSql = "UPDATE HaidaiAreas SET SectorId = @sectorId, Code = @code, NamePt = @namePt, NameJp = @nameJp, SortOrder = @sortOrder, IsActive = @isActive, UpdatedAt = CURRENT_TIMESTAMP WHERE Id = @id;",
+                DeleteSql = "DELETE FROM HaidaiAreas WHERE Id = @id;",
+                BuildParameters = (_, values, currentId) =>
+                {
+                    var code = ReadString(values, "code").Trim();
+                    var namePt = ReadString(values, "namePt").Trim();
+                    var nameJp = ReadString(values, "nameJp").Trim();
+                    var sectorId = ReadInt(values, "sectorId");
+                    if (sectorId <= 0 || string.IsNullOrWhiteSpace(code) || string.IsNullOrWhiteSpace(namePt))
+                        throw new InvalidOperationException(L("Informe setor, codigo e nome da area.", "Sector, code and area name are required."));
+
+                    var parameters = new DynamicParameters();
+                    parameters.Add("@sectorId", sectorId);
+                    parameters.Add("@code", code);
+                    parameters.Add("@namePt", namePt);
+                    parameters.Add("@nameJp", nameJp);
+                    parameters.Add("@sortOrder", ReadInt(values, "sortOrder"));
+                    parameters.Add("@isActive", ReadBool(values, "isActive", true) ? 1 : 0);
+                    if (currentId.HasValue) parameters.Add("@id", currentId.Value);
                     return parameters;
                 }
             };
